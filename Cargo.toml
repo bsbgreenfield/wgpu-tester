@@ -1,0 +1,8 @@
+[package]
+name = "code-notes"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winit = { version = "0.30.9", features = ["rwh_05"] }
+wgpu = "24.0.1"
