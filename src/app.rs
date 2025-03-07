@@ -96,7 +96,6 @@ impl ApplicationHandler for App<'_> {
                     .create_window(Window::default_attributes())
                     .unwrap(),
             );
-            self.window = Some(window.clone());
             let app_state = pollster::block_on(AppState::new(window.clone()));
             self.app_state = Some(app_state);
         }
