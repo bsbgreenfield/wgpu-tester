@@ -1,4 +1,4 @@
-use wgpu::Device;
+use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -9,40 +9,24 @@ use winit::{
 };
 
 #[derive(Default)]
-pub struct AppWindow {
-    window: Option<Window>,
-    size: winit::dpi::PhysicalSize<u32>,
-}
-
-impl AppWindow {
-    fn set_window(&mut self, maybe_window: Option<Window>) {
-        self.window = maybe_window;
-    }
-}
-
 pub struct App<'a> {
-    app_window: &'a AppWindow,
-    config: wgpu::SurfaceConfiguration,
+    pub window: Option<Arc<Window>>,
+    app_state: Option<AppState<'a>>,
 }
 
-impl<'a> App<'a> {
-    fn get_window(app_window: &AppWindow) -> &winit::window::Window {
-        match &app_window.window {
-            Some(window) => window,
-            None => panic!("no window set"),
-        }
-    }
+pub struct AppState<'a> {
+    pub config: wgpu::SurfaceConfiguration,
+    size: winit::dpi::PhysicalSize<u32>,
+    surface: wgpu::Surface<'a>,
+}
 
-    pub async fn new(app_window: &'a AppWindow) -> App<'a> {
-        let size = App::get_window(app_window).inner_size();
-
+impl<'a> AppState<'a> {
+    pub async fn new(window: Arc<Window>) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             ..Default::default()
         });
 
-        let surface = instance
-            .create_surface(App::get_window(app_window))
-            .unwrap();
+        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -74,6 +58,7 @@ impl<'a> App<'a> {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
+        let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -84,16 +69,38 @@ impl<'a> App<'a> {
             view_formats: Vec::new(),
             desired_maximum_frame_latency: 2,
         };
-        Self { app_window, config }
+
+        Self {
+            config,
+            size,
+            surface,
+        }
+    }
+
+    pub fn draw(&self) {
+        println!("drawing");
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {}
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+        }
     }
 }
 
-impl<'a> ApplicationHandler for App<'a> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {}
+impl ApplicationHandler for App<'_> {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() {
+            let window = Arc::new(
+                event_loop
+                    .create_window(Window::default_attributes())
+                    .unwrap(),
+            );
+            self.window = Some(window.clone());
+            let app_state = pollster::block_on(AppState::new(window.clone()));
+            self.app_state = Some(app_state);
+        }
+    }
 
     fn window_event(
         &mut self,
@@ -111,14 +118,27 @@ impl<'a> ApplicationHandler for App<'a> {
                     },
                 ..
             } => event_loop.exit(),
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::KeyL),
+                        ..
+                    },
+                ..
+            } => {
+                if self.window.is_some() {
+                    println!("{:?}", self.window.as_ref().unwrap());
+                }
+            }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
             WindowEvent::Resized(physical_size) => {
-                self.resize(physical_size);
+                self.app_state.as_mut().unwrap().resize(physical_size);
             }
             WindowEvent::RedrawRequested => {
-                self.app_window.window.as_ref().unwrap().request_redraw();
+                self.app_state.as_ref().unwrap().draw();
             }
             _ => (),
         }
