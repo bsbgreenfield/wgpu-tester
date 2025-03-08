@@ -62,7 +62,6 @@ impl<'a> AppState<'a> {
             .unwrap_or(surface_caps.formats[0]);
 
         let size = window.inner_size();
-        println!("{:?}", window.inner_size());
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -125,7 +124,6 @@ impl<'a> AppState<'a> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            println!("MADE RENDER PASS");
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -153,7 +151,8 @@ impl ApplicationHandler for App<'_> {
             );
             let app_state = pollster::block_on(AppState::new(window.clone()));
             self.app_state = Some(app_state);
-            self.window = Some(window);
+            self.window = Some(window.clone());
+            window.request_redraw();
         }
     }
 
@@ -190,12 +189,10 @@ impl ApplicationHandler for App<'_> {
                 event_loop.exit();
             }
             WindowEvent::Resized(physical_size) => {
-                println!("setting to true");
                 self.surface_configured = true;
                 self.app_state.as_mut().unwrap().resize(physical_size);
             }
             WindowEvent::RedrawRequested => {
-                println!("{}", self.surface_configured);
                 if !self.surface_configured {
                     return;
                 }
