@@ -110,3 +110,37 @@ impl ToRawMatrix for ObjectTransform {
         }
     }
 }
+
+impl ObjectTransform {
+    pub const fn raw_matrix_from_vectors(
+        x_vector: [f32; 4],
+        y_vector: [f32; 4],
+        z_vector: [f32; 4],
+        w_vector: [f32; 4],
+    ) -> [[f32; 4]; 4] {
+        [x_vector, y_vector, z_vector, w_vector]
+    }
+
+    pub const fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+        matrix
+    }
+
+    pub const fn identity() -> [[f32; 4]; 4] {
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    }
+    pub fn rotate_45() -> [[f32; 4]; 4] {
+        const fval: f32 = std::f32::consts::PI / 4.0;
+        let val = fval.cos();
+        [
+            [val, val, 0.0, 0.0],
+            [-val, val, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    }
+}

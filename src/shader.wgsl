@@ -13,6 +13,12 @@ struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
 }
 
+struct CTRUniform {
+  transform: mat4x4<f32>,
+}
+
+@group(0) @binding(0)
+var<uniform> ctr_uniform: CTRUniform; 
 
 @vertex
 fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -23,7 +29,7 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
         instance.obj_matrix_3,
     );
     var out: VertexOutput;
-    out.clip_position = obj_matrix * vec4<f32>(obj.position, 1.0);
+    out.clip_position = ctr_uniform.transform * obj_matrix * vec4<f32>(obj.position, 1.0);
     return out;
 }
 

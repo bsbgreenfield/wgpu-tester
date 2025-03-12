@@ -22,6 +22,20 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.0, 1.0,
 );
 
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct CtrUniform {
+    trans: [[f32; 4]; 4],
+}
+
+impl CtrUniform {
+    fn new() -> Self {
+        Self {
+            trans: (OPENGL_TO_WGPU_MATRIX).into(),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct App<'a> {
     pub window: Option<Arc<Window>>,
@@ -37,7 +51,8 @@ pub struct AppState<'a> {
     queue: wgpu::Queue,
     render_pipeline: wgpu::RenderPipeline,
     objects: Vec<Object>,
-    instance_buffer: wgpu::Buffer,
+    instance_transform_buffer: wgpu::Buffer,
+    ctr_bind_group: wgpu::BindGroup,
 }
 
 impl<'a> AppState<'a> {
@@ -94,10 +109,43 @@ impl<'a> AppState<'a> {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
+
+        let ctr_uniform = CtrUniform::new();
+
+        let ctr_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("ctr buffer"),
+            contents: bytemuck::cast_slice(&[ctr_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        let ctr_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("ctr uniform"),
+            });
+
+        let ctr_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &ctr_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: ctr_buffer.as_entire_binding(),
+            }],
+            label: Some("ctr bind group"),
+        });
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&ctr_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -145,20 +193,16 @@ impl<'a> AppState<'a> {
                 conservative: false,
             },
         });
-        let position = cgmath::Vector3::new(0.25, 0.25, 0.0);
-        let obj_transform: ObjectTransform = ObjectTransform {
-            position,
-            rotation: cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(0.0)),
-        };
 
-        let instance_data = vec![obj_transform.as_raw_matrix()];
+        let instance_data = vec![ObjectTransform::rotate_45()];
 
         // store the matrix transforms per object instance to be used by the shader
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let instance_transform_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
 
         let object = Object::from_vertices(VERTICES, &INDICES, &device);
         let objects = vec![object];
@@ -170,7 +214,8 @@ impl<'a> AppState<'a> {
             queue,
             render_pipeline,
             objects,
-            instance_buffer,
+            instance_transform_buffer,
+            ctr_bind_group,
         }
     }
 
@@ -206,8 +251,10 @@ impl<'a> AppState<'a> {
                 timestamp_writes: None,
             });
 
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.instance_transform_buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
+
+            render_pass.set_bind_group(0, &self.ctr_bind_group, &[]);
 
             use crate::object::DrawObject;
             render_pass.draw_object_instanced(self.objects.first().unwrap(), 0..1);
