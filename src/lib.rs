@@ -3,6 +3,7 @@ mod app;
 mod constants;
 mod object;
 use app::App;
+mod geo_functions;
 mod vertex;
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();

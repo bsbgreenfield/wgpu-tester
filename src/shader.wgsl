@@ -1,5 +1,6 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
+  @builtin(vertex_index) index: u32,
 }
 
 struct InstanceInput {
@@ -11,6 +12,7 @@ struct InstanceInput {
 
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
+  @location(0) color: vec3<f32>,
 }
 
 struct CTRUniform {
@@ -19,6 +21,7 @@ struct CTRUniform {
 
 @group(0) @binding(0)
 var<uniform> ctr_uniform: CTRUniform; 
+
 
 @vertex
 fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -30,10 +33,21 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
     );
     var out: VertexOutput;
     out.clip_position = ctr_uniform.transform * obj_matrix * vec4<f32>(obj.position, 1.0);
+    var color: vec3<f32>;
+    if obj.index == 0 {
+        color = vec3<f32>(1.0, 0.0, 0.0);
+    } else if obj.index == 1 {
+        color = vec3<f32>(0.0, 1.0, 0.0);
+    } else if obj.index == 2 {
+        color = vec3<f32>(0.0, 0.0, 1.0);
+    } else {
+        color = vec3<f32>(1.0, 1.0, 0.0);
+    }
+    out.color = color;
     return out;
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.9, 0.1, 0.1, 1.0);
+@ fragment
+fn fs_main(in: VertexOutput) -> @ location(0) vec4<f32> {
+    return vec4<f32>(in.color, 1.0);
 }

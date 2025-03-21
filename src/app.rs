@@ -1,14 +1,15 @@
 use crate::{
     constants::{INDICES, VERTICES},
+    geo_functions,
     object::{self, Object, ObjectTransform, ToRawMatrix},
     vertex,
 };
 use cgmath::{InnerSpace, Rotation3, Zero};
-use std::sync::Arc;
+use std::{clone, sync::Arc};
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
-    dpi::{PhysicalSize, Position},
+    dpi::{PhysicalSize, Position, Size},
     event::*,
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
@@ -36,11 +37,55 @@ impl CtrUniform {
     }
 }
 
+fn create_vertex_bind_group<B>(
+    buffer_data: B,
+    device: &wgpu::Device,
+    label: Option<&str>,
+    buf_label: Option<&str>,
+    buffer_usage: wgpu::BufferUsages,
+    binding_type: wgpu::BindingType,
+) -> (wgpu::BindGroupLayout, wgpu::BindGroup)
+where
+    B: Copy + Clone + bytemuck::Zeroable + bytemuck::Pod,
+{
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: buf_label,
+        contents: bytemuck::cast_slice(&[buffer_data]),
+        usage: buffer_usage,
+    });
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: binding_type,
+            count: None,
+        }],
+        label,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+        label,
+    });
+
+    (bind_group_layout, bind_group)
+}
+
 #[derive(Default)]
 pub struct App<'a> {
     pub window: Option<Arc<Window>>,
     app_state: Option<AppState<'a>>,
     surface_configured: bool,
+}
+
+impl<'a> App<'a> {
+    fn update_state(&mut self) {
+        self.app_state.as_mut().unwrap().update();
+    }
 }
 
 pub struct AppState<'a> {
@@ -52,7 +97,7 @@ pub struct AppState<'a> {
     render_pipeline: wgpu::RenderPipeline,
     objects: Vec<Object>,
     instance_transform_buffer: wgpu::Buffer,
-    ctr_bind_group: wgpu::BindGroup,
+    bind_groups: Vec<wgpu::BindGroup>,
 }
 
 impl<'a> AppState<'a> {
@@ -109,38 +154,18 @@ impl<'a> AppState<'a> {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
-
-        let ctr_uniform = CtrUniform::new();
-
-        let ctr_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ctr buffer"),
-            contents: bytemuck::cast_slice(&[ctr_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-
-        let ctr_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("ctr uniform"),
-            });
-
-        let ctr_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &ctr_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: ctr_buffer.as_entire_binding(),
-            }],
-            label: Some("ctr bind group"),
-        });
+        let (ctr_bind_group_layout, ctr_bind_group) = create_vertex_bind_group(
+            CtrUniform::new(),
+            &device,
+            Some("ctr bind group"),
+            Some("ctr buffer"),
+            wgpu::BufferUsages::UNIFORM,
+            wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+        );
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -164,10 +189,18 @@ impl<'a> AppState<'a> {
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::Zero,
+                            operation: wgpu::BlendOperation::Min,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
                     }),
-                    write_mask: wgpu::ColorWrites::ALL,
+                    write_mask: wgpu::ColorWrites::all(),
                 })],
                 compilation_options: Default::default(),
             }),
@@ -194,18 +227,20 @@ impl<'a> AppState<'a> {
             },
         });
 
-        let instance_data = vec![ObjectTransform::rotate_45()];
+        let instance_data = vec![geo_functions::identity()];
 
         // store the matrix transforms per object instance to be used by the shader
         let instance_transform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Instance Buffer"),
                 contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
 
         let object = Object::from_vertices(VERTICES, &INDICES, &device);
         let objects = vec![object];
+
+        let bind_groups = vec![ctr_bind_group];
         Self {
             config,
             size,
@@ -215,9 +250,11 @@ impl<'a> AppState<'a> {
             render_pipeline,
             objects,
             instance_transform_buffer,
-            ctr_bind_group,
+            bind_groups,
         }
     }
+
+    pub fn update(&mut self) {}
 
     pub fn draw(&self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -254,7 +291,9 @@ impl<'a> AppState<'a> {
             render_pass.set_vertex_buffer(1, self.instance_transform_buffer.slice(..));
             render_pass.set_pipeline(&self.render_pipeline);
 
-            render_pass.set_bind_group(0, &self.ctr_bind_group, &[]);
+            for (idx, bind_group) in self.bind_groups.iter().enumerate() {
+                render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
+            }
 
             use crate::object::DrawObject;
             render_pass.draw_object_instanced(self.objects.first().unwrap(), 0..1);
@@ -280,7 +319,9 @@ impl ApplicationHandler for App<'_> {
         if self.window.is_none() {
             let window = Arc::new(
                 event_loop
-                    .create_window(Window::default_attributes())
+                    .create_window(
+                        Window::default_attributes().with_inner_size(PhysicalSize::new(1500, 1500)),
+                    )
                     .unwrap(),
             );
             let app_state = pollster::block_on(AppState::new(window.clone()));

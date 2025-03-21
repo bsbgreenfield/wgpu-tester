@@ -133,14 +133,4 @@ impl ObjectTransform {
             [0.0, 0.0, 0.0, 1.0],
         ]
     }
-    pub fn rotate_45() -> [[f32; 4]; 4] {
-        const fval: f32 = std::f32::consts::PI / 4.0;
-        let val = fval.cos();
-        [
-            [val, val, 0.0, 0.0],
-            [-val, val, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ]
-    }
 }
