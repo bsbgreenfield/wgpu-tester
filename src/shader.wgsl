@@ -32,17 +32,8 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
         instance.obj_matrix_3,
     );
     var out: VertexOutput;
-    out.clip_position = ctr_uniform.transform * obj_matrix * vec4<f32>(obj.position, 1.0);
-    var color: vec3<f32>;
-    if obj.index == 0 {
-        color = vec3<f32>(1.0, 0.0, 0.0);
-    } else if obj.index == 1 {
-        color = vec3<f32>(0.0, 1.0, 0.0);
-    } else if obj.index == 2 {
-        color = vec3<f32>(0.0, 0.0, 1.0);
-    } else {
-        color = vec3<f32>(1.0, 1.0, 0.0);
-    }
+    out.clip_position = obj_matrix * vec4<f32>(obj.position, 1.0);
+    var color: vec3<f32> = vec3<f32>(0.5, 0.2, 0.7);
     out.color = color;
     return out;
 }

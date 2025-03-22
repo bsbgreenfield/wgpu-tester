@@ -70,14 +70,12 @@ pub trait ToRawMatrix {
 }
 
 pub struct ObjectTransform {
-    pub position: cgmath::Vector3<f32>,
-    pub rotation: cgmath::Quaternion<f32>,
+    pub transform_matrix: cgmath::Matrix4<f32>,
 }
 
 impl ToRawMatrix for ObjectTransform {
     fn as_raw_matrix(&self) -> [[f32; 4]; 4] {
-        (cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation))
-            .into()
+        self.transform_matrix.into()
     }
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
