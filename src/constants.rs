@@ -42,3 +42,20 @@ pub const VERTICES: &[Vertex] = &[
     // index 6
     // index 7
 ];
+
+pub const INDICES_2: [u32; 6] = [0, 1, 2, 0, 2, 3];
+pub const VERTICES_2: &[Vertex] = &[
+    // front face 1
+    Vertex {
+        position: [-0.5, 0.5, 0.0], // 0
+    },
+    Vertex {
+        position: [-0.5, -0.5, 0.0], // 1
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0], // 2
+    },
+    Vertex {
+        position: [0.5, 0.5, 0.0], // 3
+    },
+];

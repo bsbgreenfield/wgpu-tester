@@ -69,6 +69,7 @@ pub trait ToRawMatrix {
     fn as_raw_matrix(&self) -> [[f32; 4]; 4];
 }
 
+#[derive(Debug)]
 pub struct ObjectTransform {
     pub transform_matrix: cgmath::Matrix4<f32>,
 }

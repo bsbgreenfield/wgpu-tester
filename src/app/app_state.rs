@@ -1,32 +1,25 @@
 use super::{app_config::AppConfig, util};
 use crate::object::{Object, ObjectTransform, ToRawMatrix};
 use crate::vertex::Vertex;
-use cgmath::{InnerSpace, SquareMatrix, Transform, Zero};
+use cgmath::{SquareMatrix, Transform};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-pub struct InstanceData {
-    instance_transform_buffer: wgpu::Buffer,
+#[derive(Debug)]
+pub struct ObjectInstances {
     transforms: Vec<ObjectTransform>,
     num_instances: u32,
+    offset_val: u32,
 }
-impl InstanceData {
-    pub fn from_transforms(
-        transforms: Vec<ObjectTransform>,
-        device: &wgpu::Device,
-        num_instances: u32,
-    ) -> Self {
-        let mut instance_data = Vec::with_capacity(transforms.len());
-        for transform in &transforms {
-            instance_data.push(transform.as_raw_matrix());
-        }
-        let instance_transform_buffer =
-            InstanceData::create_instance_buffer_from_raw(&instance_data, device);
+
+impl ObjectInstances {
+    pub fn from_transforms(transforms: Vec<ObjectTransform>, offset_val: u32) -> Self {
+        let num_instances = transforms.len() as u32;
         Self {
-            instance_transform_buffer,
             transforms,
             num_instances,
+            offset_val,
         }
     }
     pub fn as_raw_data(&self) -> Vec<[[f32; 4]; 4]> {
@@ -35,6 +28,47 @@ impl InstanceData {
             .map(|t| t.as_raw_matrix())
             .collect::<Vec<[[f32; 4]; 4]>>()
     }
+    pub fn apply_transforms(&mut self, t_matrices: &[cgmath::Matrix4<f32>]) {
+        assert!(t_matrices.len() == self.transforms.len());
+        for (i, transform) in self.transforms.iter_mut().enumerate() {
+            transform.transform_matrix = transform.transform_matrix.concat(&t_matrices[i]);
+        }
+    }
+}
+
+pub struct InstanceData {
+    instance_transform_buffer: wgpu::Buffer,
+    object_instances: Vec<ObjectInstances>,
+}
+impl InstanceData {
+    pub fn new(object_instances_list: Vec<ObjectInstances>, device: &wgpu::Device) -> Self {
+        let tot_num_instances: usize = object_instances_list
+            .iter()
+            .map(|e| e.transforms.len())
+            .sum();
+        let mut data = Vec::<[[f32; 4]; 4]>::with_capacity(tot_num_instances);
+
+        for object_instances in object_instances_list.iter() {
+            let raw_matrices = object_instances
+                .transforms
+                .iter()
+                .map(|t| t.as_raw_matrix());
+            for raw_data in raw_matrices {
+                data.push(raw_data);
+            }
+        }
+
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance buffer"),
+            contents: bytemuck::cast_slice(&data),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        Self {
+            instance_transform_buffer: buffer,
+            object_instances: object_instances_list,
+        }
+    }
+
     fn create_instance_buffer_from_raw(
         instance_data: &[[[f32; 4]; 4]],
         device: &wgpu::Device,
@@ -45,22 +79,15 @@ impl InstanceData {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         })
     }
-    fn create_instance_buffer_from_self(&self, device: &wgpu::Device) -> wgpu::Buffer {
-        let raw_map: Vec<[[f32; 4]; 4]> =
-            self.transforms.iter().map(|t| t.as_raw_matrix()).collect();
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&raw_map),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        })
-    }
-
-    pub fn apply_transforms(&mut self, t_matrices: &[cgmath::Matrix4<f32>]) {
-        assert!(t_matrices.len() == self.transforms.len());
-        for (i, transform) in self.transforms.iter_mut().enumerate() {
-            transform.transform_matrix = transform.transform_matrix.concat(&t_matrices[i]);
-        }
-    }
+    // fn create_instance_buffer_from_self(&self, device: &wgpu::Device) -> wgpu::Buffer {
+    //    let raw_map: Vec<[[f32; 4]; 4]> =
+    //        self.transforms.iter().map(|t| t.as_raw_matrix()).collect();
+    //    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    //        label: Some("Instance Buffer"),
+    //        contents: bytemuck::cast_slice(&raw_map),
+    //        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+    //    })
+    // }
 }
 
 pub struct AppState<'a> {
@@ -157,18 +184,24 @@ impl<'a> AppState<'a> {
                     },
                 });
 
-        let t: ObjectTransform = ObjectTransform {
-            transform_matrix: cgmath::Matrix4::identity(),
-        };
-
-        let instance_data: InstanceData =
-            InstanceData::from_transforms(vec![t], &app_config.device, 1);
-
+        // create an object using its local coordinates
+        // object contains its vertex and index buffers
         use crate::constants::*;
         let object = Object::from_vertices(VERTICES, &INDICES, &app_config.device);
-        let objects = vec![object];
+        let object_2 = Object::from_vertices(VERTICES_2, &INDICES_2, &app_config.device);
+        let objects = vec![object, object_2];
+
+        let mut object_instances_list = Vec::<ObjectInstances>::with_capacity(objects.len());
+
+        for obj_idx in 0..objects.len() {
+            let object_instances: ObjectInstances = Self::get_object_instances(obj_idx);
+            object_instances_list.push(object_instances);
+        }
+
+        let instance_data = InstanceData::new(object_instances_list, &app_config.device);
 
         let bind_groups = vec![ctr_bind_group];
+
         Self {
             app_config,
             render_pipeline,
@@ -178,15 +211,44 @@ impl<'a> AppState<'a> {
         }
     }
 
+    pub fn get_object_instances(obj_idx: usize) -> ObjectInstances {
+        match obj_idx {
+            0 => {
+                let t: ObjectTransform = ObjectTransform {
+                    transform_matrix: cgmath::Matrix4::identity(),
+                };
+
+                let t2: ObjectTransform = ObjectTransform {
+                    transform_matrix: cgmath::Matrix4::from_translation(
+                        cgmath::Vector3::<f32>::new(0.5, 0.4, 0.0),
+                    ),
+                };
+
+                ObjectInstances::from_transforms(vec![t, t2], 0)
+            }
+            1 => {
+                let tt =
+                    cgmath::Matrix4::from_translation(cgmath::Vector3::<f32>::new(-0.3, 0.6, 0.0));
+                let ss = cgmath::Matrix4::from_scale(0.3);
+                let s = ObjectTransform {
+                    transform_matrix: tt * ss,
+                };
+
+                ObjectInstances::from_transforms(vec![s], 2)
+            }
+            _ => panic!("no such object defined as index {}", obj_idx),
+        }
+    }
+
     pub fn update(&mut self) {
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.4));
-        self.instance_data.apply_transforms(&[rot]);
-        let data = self.instance_data.as_raw_data();
-        self.app_config.queue.write_buffer(
-            &self.instance_data.instance_transform_buffer,
-            0,
-            bytemuck::cast_slice(&data),
-        );
+        //    let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.4));
+        //    self.instance_data.apply_transforms(&[rot]);
+        //    let data = self.instance_data.as_raw_data();
+        //    self.app_config.queue.write_buffer(
+        //        &self.instance_data.instance_transform_buffer,
+        //        0,
+        //        bytemuck::cast_slice(&data),
+        //    );
     }
 
     pub fn draw(&self) -> Result<(), wgpu::SurfaceError> {
@@ -231,12 +293,15 @@ impl<'a> AppState<'a> {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
-            // for each object in objects, set vertex buffer for that object, setup etc
+            // for each object, draw as many instances as there are defined in
+            // self.instance data for that particular index
+
             use crate::object::DrawObject;
-            render_pass.draw_object_instanced(
-                self.objects.first().unwrap(),
-                0..self.instance_data.num_instances,
-            );
+            for (idx, object) in self.objects.iter().enumerate() {
+                let num_instances = self.instance_data.object_instances[idx].num_instances;
+                let offset = self.instance_data.object_instances[idx].offset_val;
+                render_pass.draw_object_instanced(object, offset..num_instances + offset);
+            }
         }
         self.app_config
             .queue
