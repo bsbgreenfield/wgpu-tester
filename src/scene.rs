@@ -1,6 +1,68 @@
 use crate::object::{Object, ObjectTransform, ToRawMatrix};
-use cgmath::Transform;
+use cgmath::{SquareMatrix, Transform, Vector3, Zero};
 use wgpu::util::DeviceExt;
+
+pub struct Camera {
+    fov: f32,
+    aspect_ratio: f32,
+    zfar: f32,
+    znear: f32,
+    eye_pos: cgmath::Point3<f32>,
+    target: cgmath::Point3<f32>,
+}
+
+impl Camera {
+    pub fn new(fov: f32, aspect_ratio: f32, zfar: f32, znear: f32) -> Self {
+        Self {
+            fov,
+            aspect_ratio,
+            zfar,
+            znear,
+            eye_pos: cgmath::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 2.0,
+            },
+            target: cgmath::Point3::new(0.0, 0.0, 0.0),
+        }
+    }
+    pub fn perspective_matrix(&self) -> cgmath::Matrix4<f32> {
+        let p = (self.fov / 2.0).tan();
+        let x_factor = self.aspect_ratio / p;
+        let z_aspect = self.zfar / (self.zfar - self.znear);
+        let z_norm = -1.0 * self.znear * (self.zfar / (self.zfar - self.znear));
+        cgmath::Matrix4::<f32>::new(
+            self.aspect_ratio / p,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            p,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            z_aspect,
+            z_norm,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+        )
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform {
+    pub view_proj: [[f32; 4]; 4],
+}
+impl CameraUniform {
+    pub fn new() -> Self {
+        Self {
+            view_proj: cgmath::Matrix4::identity().into(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct ObjectInstances {
@@ -75,8 +137,44 @@ impl ObjectInstances {
         }
     }
 }
-// a scene will contain
+
 pub struct Scene {
     pub objects: Vec<Object>,
     pub instance_data: InstanceData,
+    pub camera: Camera,
+    pub camera_uniform: CameraUniform,
+}
+
+impl Scene {
+    pub fn get_camera_bind_group(
+        &self,
+        camera_buffer: &wgpu::Buffer,
+        device: &wgpu::Device,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("Camera bind group layout"),
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera bind group"),
+        });
+
+        (camera_bind_group_layout, camera_bind_group)
+    }
 }

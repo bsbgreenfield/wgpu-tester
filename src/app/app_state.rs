@@ -1,9 +1,10 @@
 use super::{app_config::AppConfig, util};
 use crate::object::{Object, ObjectTransform, ToRawMatrix};
-use crate::scene::{InstanceData, ObjectInstances, Scene};
+use crate::scene::{Camera, CameraUniform, InstanceData, ObjectInstances, Scene};
 use crate::vertex::Vertex;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use winit::window::Window;
 
 pub struct AppState<'a> {
@@ -22,25 +23,56 @@ impl<'a> AppState<'a> {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
-        let (ctr_bind_group_layout, ctr_bind_group) = util::create_vertex_bind_group(
-            super::app::CtrUniform::new(),
-            &app_config.device,
-            Some("ctr bind group"),
-            Some("ctr buffer"),
-            wgpu::BufferUsages::UNIFORM,
-            wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
+
+        // create an object using its local coordinates
+        // object contains its vertex and index buffers
+        use crate::constants::*;
+        let object = Object::from_vertices(VERTICES, &INDICES, &app_config.device);
+        let object_2 = Object::from_vertices(VERTICES_2, &INDICES_2, &app_config.device);
+        let objects = vec![object, object_2];
+
+        let mut object_instances_list = Vec::<ObjectInstances>::with_capacity(objects.len());
+
+        for obj_idx in 0..objects.len() {
+            let object_instances: ObjectInstances = Self::get_object_instances(obj_idx);
+            object_instances_list.push(object_instances);
+        }
+
+        let instance_data = InstanceData::new(object_instances_list, &app_config.device);
+
+        let camera: Camera = Camera::new(
+            45.0,
+            (app_config.size.height / app_config.size.width) as f32,
+            0.1,
+            100.0,
         );
+        let camera_uniform = CameraUniform::new();
+        let scene = Scene {
+            objects,
+            camera,
+            camera_uniform,
+            instance_data,
+        };
+
+        let camera_buffer: wgpu::Buffer =
+            app_config
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("camera_buffer"),
+                    contents: bytemuck::cast_slice(&[camera_uniform]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+        let (camera_bind_group_layout, camera_bind_group) =
+            scene.get_camera_bind_group(&camera_buffer, &app_config.device);
+
+        let bind_groups = vec![camera_bind_group];
 
         let render_pipeline_layout =
             app_config
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&ctr_bind_group_layout],
+                    bind_group_layouts: &[&camera_bind_group_layout],
                     push_constant_ranges: &[],
                 });
         let render_pipeline =
@@ -98,28 +130,6 @@ impl<'a> AppState<'a> {
                         conservative: false,
                     },
                 });
-
-        // create an object using its local coordinates
-        // object contains its vertex and index buffers
-        use crate::constants::*;
-        let object = Object::from_vertices(VERTICES, &INDICES, &app_config.device);
-        let object_2 = Object::from_vertices(VERTICES_2, &INDICES_2, &app_config.device);
-        let objects = vec![object, object_2];
-
-        let mut object_instances_list = Vec::<ObjectInstances>::with_capacity(objects.len());
-
-        for obj_idx in 0..objects.len() {
-            let object_instances: ObjectInstances = Self::get_object_instances(obj_idx);
-            object_instances_list.push(object_instances);
-        }
-
-        let instance_data = InstanceData::new(object_instances_list, &app_config.device);
-
-        let bind_groups = vec![ctr_bind_group];
-        let scene = Scene {
-            objects,
-            instance_data,
-        };
         Self {
             app_config,
             render_pipeline,
