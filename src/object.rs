@@ -2,6 +2,7 @@ use wgpu::util::DeviceExt;
 
 use crate::vertex::Vertex;
 use std::ops::Range;
+
 pub struct Mesh {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,

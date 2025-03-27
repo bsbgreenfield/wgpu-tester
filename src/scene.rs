@@ -1,5 +1,5 @@
 use crate::object::{Object, ObjectTransform, ToRawMatrix};
-use cgmath::{SquareMatrix, Transform, Vector3, Zero};
+use cgmath::Transform;
 use wgpu::util::DeviceExt;
 
 pub struct Camera {
@@ -10,9 +10,16 @@ pub struct Camera {
     eye_pos: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
 }
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.5,
+    0.0, 0.0, 0.0, 1.0,
+);
 
 impl Camera {
-    pub fn new(fov: f32, aspect_ratio: f32, zfar: f32, znear: f32) -> Self {
+    pub fn new(fov: f32, aspect_ratio: f32, znear: f32, zfar: f32) -> Self {
         Self {
             fov,
             aspect_ratio,
@@ -32,23 +39,17 @@ impl Camera {
         let z_aspect = self.zfar / (self.zfar - self.znear);
         let z_norm = -1.0 * self.znear * (self.zfar / (self.zfar - self.znear));
         cgmath::Matrix4::<f32>::new(
-            self.aspect_ratio / p,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            p,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            z_aspect,
-            z_norm,
-            0.0,
-            0.0,
-            1.0,
+            x_factor, 0.0, 0.0, 0.0, 0.0, p, 0.0, 0.0, 0.0, 0.0, z_aspect, z_norm, 0.0, 0.0, 1.0,
             0.0,
         )
+    }
+
+    pub fn get_buffer(&self, camera_uniform: CameraUniform, device: &wgpu::Device) -> wgpu::Buffer {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("camera_buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        })
     }
 }
 #[repr(C)]
@@ -57,9 +58,9 @@ pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
 }
 impl CameraUniform {
-    pub fn new() -> Self {
+    pub fn new(camera: &Camera) -> Self {
         Self {
-            view_proj: cgmath::Matrix4::identity().into(),
+            view_proj: camera.perspective_matrix().into(),
         }
     }
 }
@@ -176,5 +177,19 @@ impl Scene {
         });
 
         (camera_bind_group_layout, camera_bind_group)
+    }
+    pub fn setup_with_default_camera(
+        objects: Vec<Object>,
+        instance_data: InstanceData,
+        ar: f32,
+    ) -> Self {
+        let camera: Camera = Camera::new(std::f32::consts::FRAC_PI_2, ar, 0.1, 100.0);
+        let camera_uniform = CameraUniform::new(&camera);
+        Scene {
+            objects,
+            camera,
+            instance_data,
+            camera_uniform,
+        }
     }
 }

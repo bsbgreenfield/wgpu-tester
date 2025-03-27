@@ -1,14 +1,4 @@
-use cgmath::{InnerSpace, Rotation3, Zero};
-use std::sync::Arc;
-use wgpu::util::DeviceExt;
-use winit::{
-    application::ApplicationHandler,
-    dpi::PhysicalSize,
-    event::*,
-    event_loop::ActiveEventLoop,
-    keyboard::{KeyCode, PhysicalKey},
-    window::{self, Window},
-};
+use winit::dpi::PhysicalSize;
 
 pub struct AppConfig<'a> {
     pub size: winit::dpi::PhysicalSize<u32>,

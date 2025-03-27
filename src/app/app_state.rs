@@ -1,10 +1,10 @@
 use super::{app_config::AppConfig, util};
-use crate::object::{Object, ObjectTransform, ToRawMatrix};
-use crate::scene::{Camera, CameraUniform, InstanceData, ObjectInstances, Scene};
+use crate::app::util::create_objects;
+use crate::constants::{INDICES, VERTICES};
+use crate::object::{ObjectTransform, ToRawMatrix};
+use crate::scene::{InstanceData, ObjectInstances, Scene};
 use crate::vertex::Vertex;
-use cgmath::SquareMatrix;
 use std::sync::Arc;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use winit::window::Window;
 
 pub struct AppState<'a> {
@@ -26,10 +26,7 @@ impl<'a> AppState<'a> {
 
         // create an object using its local coordinates
         // object contains its vertex and index buffers
-        use crate::constants::*;
-        let object = Object::from_vertices(VERTICES, &INDICES, &app_config.device);
-        let object_2 = Object::from_vertices(VERTICES_2, &INDICES_2, &app_config.device);
-        let objects = vec![object, object_2];
+        let objects = create_objects(vec![VERTICES], vec![&INDICES], &app_config.device);
 
         let mut object_instances_list = Vec::<ObjectInstances>::with_capacity(objects.len());
 
@@ -40,28 +37,12 @@ impl<'a> AppState<'a> {
 
         let instance_data = InstanceData::new(object_instances_list, &app_config.device);
 
-        let camera: Camera = Camera::new(
-            45.0,
-            (app_config.size.height / app_config.size.width) as f32,
-            0.1,
-            100.0,
-        );
-        let camera_uniform = CameraUniform::new();
-        let scene = Scene {
-            objects,
-            camera,
-            camera_uniform,
-            instance_data,
-        };
+        let aspect_ratio = (app_config.size.height / app_config.size.width) as f32;
+        let scene = Scene::setup_with_default_camera(objects, instance_data, aspect_ratio);
+        let camera_buffer = scene
+            .camera
+            .get_buffer(scene.camera_uniform, &app_config.device);
 
-        let camera_buffer: wgpu::Buffer =
-            app_config
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("camera_buffer"),
-                    contents: bytemuck::cast_slice(&[camera_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
         let (camera_bind_group_layout, camera_bind_group) =
             scene.get_camera_bind_group(&camera_buffer, &app_config.device);
 
@@ -121,15 +102,12 @@ impl<'a> AppState<'a> {
                         strip_index_format: None,
                         front_face: wgpu::FrontFace::Ccw,
                         cull_mode: Some(wgpu::Face::Back),
-                        // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-                        // or Features::POLYGON_MODE_POINT
                         polygon_mode: wgpu::PolygonMode::Fill,
-                        // Requires Features::DEPTH_CLIP_CONTROL
                         unclipped_depth: false,
-                        // Requires Features::CONSERVATIVE_RASTERIZATION
                         conservative: false,
                     },
                 });
+
         Self {
             app_config,
             render_pipeline,
@@ -141,17 +119,30 @@ impl<'a> AppState<'a> {
     pub fn get_object_instances(obj_idx: usize) -> ObjectInstances {
         match obj_idx {
             0 => {
+                let a = cgmath::Matrix4::from_translation(cgmath::Vector3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                }) * cgmath::Matrix4::from_scale(0.5)
+                    * cgmath::Matrix4::from_angle_z(cgmath::Deg(25.0));
+
+                let b = cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.6, 0.0, 0.0));
+                let c =
+                    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::new(0.0, 0.0, -0.5));
+
                 let t: ObjectTransform = ObjectTransform {
-                    transform_matrix: cgmath::Matrix4::identity(),
+                    transform_matrix: b,
                 };
+                // let m = cgmath::Matrix4::from_translation(cgmath::Vector3 {
+                //     x: 0.4,
+                //     y: 0.4,
+                //     z: 80.0,
+                // });
+                // let t2: ObjectTransform = ObjectTransform {
+                //    transform_matrix: m,
+                // };
 
-                let t2: ObjectTransform = ObjectTransform {
-                    transform_matrix: cgmath::Matrix4::from_translation(
-                        cgmath::Vector3::<f32>::new(0.5, 0.4, 0.0),
-                    ),
-                };
-
-                ObjectInstances::from_transforms(vec![t, t2], 0)
+                ObjectInstances::from_transforms(vec![t], 0)
             }
             1 => {
                 let tt =

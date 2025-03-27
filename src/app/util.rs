@@ -1,6 +1,8 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
+
+use crate::{object::Object, vertex::Vertex};
 
 use super::app_config::AppConfig;
 
@@ -104,4 +106,26 @@ where
     });
 
     (bind_group_layout, bind_group)
+}
+
+pub fn create_objects(
+    vertices: Vec<&[Vertex]>,
+    indices: Vec<&[u32]>,
+    device: &wgpu::Device,
+) -> Vec<Object> {
+    let mut objects = Vec::with_capacity(vertices.len());
+    for data in vertices.iter().zip(indices.iter()) {
+        let mut vertices_t: Vec<Vertex> = Vec::with_capacity(3);
+        // transform each vertex by dividing by its z value
+        for v in data.0.iter() {
+            let x = v.position[0] / v.position[2];
+            let y = v.position[1] / v.position[2];
+            vertices_t.push(Vertex {
+                position: [x, y, 1.0],
+            });
+        }
+        let o = Object::from_vertices(vertices_t.as_slice(), data.1, device);
+        objects.push(o);
+    }
+    objects
 }
