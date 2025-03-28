@@ -4,6 +4,7 @@ mod constants;
 mod geo_functions;
 mod object;
 mod scene;
+mod util;
 mod vertex;
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();

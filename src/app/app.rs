@@ -1,5 +1,7 @@
+use crate::scene::{MyScene, Scene};
+
 use super::app_state::AppState;
-use super::util;
+use crate::util;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,

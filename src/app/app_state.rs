@@ -1,8 +1,7 @@
-use super::{app_config::AppConfig, util};
-use crate::app::util::create_objects;
-use crate::constants::{INDICES, VERTICES};
+use super::app_config::AppConfig;
 use crate::object::{ObjectTransform, ToRawMatrix};
-use crate::scene::{InstanceData, ObjectInstances, Scene};
+use crate::scene::{MyScene, Scene};
+use crate::util;
 use crate::vertex::Vertex;
 use std::sync::Arc;
 use winit::window::Window;
@@ -10,7 +9,7 @@ use winit::window::Window;
 pub struct AppState<'a> {
     app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    scene: Scene,
+    scene: Box<dyn Scene>,
     bind_groups: Vec<wgpu::BindGroup>,
 }
 
@@ -24,27 +23,15 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
 
-        // create an object using its local coordinates
-        // object contains its vertex and index buffers
-        let objects = create_objects(vec![VERTICES], vec![&INDICES], &app_config.device);
-
-        let mut object_instances_list = Vec::<ObjectInstances>::with_capacity(objects.len());
-
-        for obj_idx in 0..objects.len() {
-            let object_instances: ObjectInstances = Self::get_object_instances(obj_idx);
-            object_instances_list.push(object_instances);
-        }
-
-        let instance_data = InstanceData::new(object_instances_list, &app_config.device);
-
         let aspect_ratio = (app_config.size.height / app_config.size.width) as f32;
-        let scene = Scene::setup_with_default_camera(objects, instance_data, aspect_ratio);
+        let mut scene = MyScene::new(&app_config.device, aspect_ratio);
+        scene.setup(&app_config.device);
         let camera_buffer = scene
             .camera
             .get_buffer(scene.camera_uniform, &app_config.device);
 
         let (camera_bind_group_layout, camera_bind_group) =
-            scene.get_camera_bind_group(&camera_buffer, &app_config.device);
+            crate::scene::get_camera_bind_group(&camera_buffer, &app_config.device);
 
         let bind_groups = vec![camera_bind_group];
 
@@ -111,50 +98,8 @@ impl<'a> AppState<'a> {
         Self {
             app_config,
             render_pipeline,
-            scene,
+            scene: Box::new(scene),
             bind_groups,
-        }
-    }
-
-    pub fn get_object_instances(obj_idx: usize) -> ObjectInstances {
-        match obj_idx {
-            0 => {
-                let a = cgmath::Matrix4::from_translation(cgmath::Vector3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                }) * cgmath::Matrix4::from_scale(0.5)
-                    * cgmath::Matrix4::from_angle_z(cgmath::Deg(25.0));
-
-                let b = cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.6, 0.0, 0.0));
-                let c =
-                    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::new(0.0, 0.0, -0.5));
-
-                let t: ObjectTransform = ObjectTransform {
-                    transform_matrix: b,
-                };
-                // let m = cgmath::Matrix4::from_translation(cgmath::Vector3 {
-                //     x: 0.4,
-                //     y: 0.4,
-                //     z: 80.0,
-                // });
-                // let t2: ObjectTransform = ObjectTransform {
-                //    transform_matrix: m,
-                // };
-
-                ObjectInstances::from_transforms(vec![t], 0)
-            }
-            1 => {
-                let tt =
-                    cgmath::Matrix4::from_translation(cgmath::Vector3::<f32>::new(-0.3, 0.6, 0.0));
-                let ss = cgmath::Matrix4::from_scale(0.3);
-                let s = ObjectTransform {
-                    transform_matrix: tt * ss,
-                };
-
-                ObjectInstances::from_transforms(vec![s], 2)
-            }
-            _ => panic!("no such object defined as index {}", obj_idx),
         }
     }
 
@@ -204,7 +149,10 @@ impl<'a> AppState<'a> {
             // set instance buffer
             render_pass.set_vertex_buffer(
                 1,
-                self.scene.instance_data.instance_transform_buffer.slice(..),
+                self.scene
+                    .get_instances()
+                    .instance_transform_buffer
+                    .slice(..),
             );
             render_pass.set_pipeline(&self.render_pipeline);
 
@@ -217,9 +165,9 @@ impl<'a> AppState<'a> {
             // self.instance data for that particular index
 
             use crate::object::DrawObject;
-            for (idx, object) in self.scene.objects.iter().enumerate() {
-                let num_instances = self.scene.instance_data.object_instances[idx].num_instances;
-                let offset = self.scene.instance_data.object_instances[idx].offset_val;
+            for (idx, object) in self.scene.get_objects().iter().enumerate() {
+                let num_instances = self.scene.get_instances().object_instances[idx].num_instances;
+                let offset = self.scene.get_instances().object_instances[idx].offset_val;
                 render_pass.draw_object_instanced(object, offset..num_instances + offset);
             }
         }

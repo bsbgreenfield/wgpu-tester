@@ -1,5 +1,5 @@
 use crate::object::{Object, ObjectTransform, ToRawMatrix};
-use cgmath::Transform;
+use cgmath::{Matrix4, SquareMatrix, Transform};
 use wgpu::util::DeviceExt;
 
 pub struct Camera {
@@ -9,6 +9,7 @@ pub struct Camera {
     znear: f32,
     eye_pos: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
+    up: cgmath::Vector3<f32>,
 }
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -27,21 +28,22 @@ impl Camera {
             znear,
             eye_pos: cgmath::Point3 {
                 x: 0.0,
-                y: 0.0,
-                z: 2.0,
+                y: 1.0,
+                z: 10.0,
             },
+            up: cgmath::Vector3::unit_y(),
             target: cgmath::Point3::new(0.0, 0.0, 0.0),
         }
     }
     pub fn perspective_matrix(&self) -> cgmath::Matrix4<f32> {
-        let p = (self.fov / 2.0).tan();
-        let x_factor = self.aspect_ratio / p;
-        let z_aspect = self.zfar / (self.zfar - self.znear);
-        let z_norm = -1.0 * self.znear * (self.zfar / (self.zfar - self.znear));
-        cgmath::Matrix4::<f32>::new(
-            x_factor, 0.0, 0.0, 0.0, 0.0, p, 0.0, 0.0, 0.0, 0.0, z_aspect, z_norm, 0.0, 0.0, 1.0,
-            0.0,
-        )
+        let view = cgmath::Matrix4::look_at_rh(self.eye_pos, self.target, self.up);
+        let proj = cgmath::perspective(
+            cgmath::Rad(self.fov),
+            self.aspect_ratio,
+            self.znear,
+            self.zfar,
+        );
+        proj * view
     }
 
     pub fn get_buffer(&self, camera_uniform: CameraUniform, device: &wgpu::Device) -> wgpu::Buffer {
@@ -60,7 +62,7 @@ pub struct CameraUniform {
 impl CameraUniform {
     pub fn new(camera: &Camera) -> Self {
         Self {
-            view_proj: camera.perspective_matrix().into(),
+            view_proj: (OPENGL_TO_WGPU_MATRIX * camera.perspective_matrix()).into(),
         }
     }
 }
@@ -138,58 +140,116 @@ impl ObjectInstances {
         }
     }
 }
+pub fn get_camera_bind_group(
+    camera_buffer: &wgpu::Buffer,
+    device: &wgpu::Device,
+) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("Camera bind group layout"),
+        });
 
-pub struct Scene {
+    let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: camera_buffer.as_entire_binding(),
+        }],
+        label: Some("camera bind group"),
+    });
+
+    (camera_bind_group_layout, camera_bind_group)
+}
+fn get_camera_default(aspect_ratio: f32) -> (Camera, CameraUniform) {
+    let camera = Camera::new(std::f32::consts::FRAC_PI_4, aspect_ratio, 0.1, 100.0);
+    let camera_uniform: CameraUniform = CameraUniform::new(&camera);
+    (camera, camera_uniform)
+}
+
+pub trait Scene {
+    fn add_objects(&mut self, objects: Vec<Object>);
+    fn add_instances(&mut self, instance_data: InstanceData);
+    fn setup(&mut self, device: &wgpu::Device)
+    where
+        Self: Sized,
+    {
+        let objects = Self::create_objects(device);
+        let instance_data = Self::create_instances(device, &objects);
+        Self::add_objects(self, objects);
+        Self::add_instances(self, instance_data);
+    }
+    fn get_instances(&self) -> &InstanceData;
+    fn get_objects(&self) -> &Vec<Object>;
+    fn new(device: &wgpu::Device, aspect_ratio: f32) -> Self
+    where
+        Self: Sized;
+    fn create_objects(device: &wgpu::Device) -> Vec<Object>
+    where
+        Self: Sized;
+    fn create_instances(device: &wgpu::Device, objects: &Vec<Object>) -> InstanceData
+    where
+        Self: Sized;
+}
+
+pub struct MyScene {
     pub objects: Vec<Object>,
     pub instance_data: InstanceData,
     pub camera: Camera,
     pub camera_uniform: CameraUniform,
 }
 
-impl Scene {
-    pub fn get_camera_bind_group(
-        &self,
-        camera_buffer: &wgpu::Buffer,
-        device: &wgpu::Device,
-    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("Camera bind group layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera bind group"),
-        });
-
-        (camera_bind_group_layout, camera_bind_group)
+impl Scene for MyScene {
+    // for each object, we need to define an one object instance per
+    // each instance that we want in the scene
+    fn create_instances(device: &wgpu::Device, objects: &Vec<Object>) -> InstanceData {
+        // local -> global transfomation matrix
+        let transform: ObjectTransform = ObjectTransform {
+            transform_matrix: cgmath::Matrix4::from_angle_z(cgmath::Deg(15.0))
+                * cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -10.0)),
+        };
+        let transform_2: ObjectTransform = ObjectTransform {
+            transform_matrix: cgmath::Matrix4::from_angle_z(cgmath::Deg(15.0))
+                * cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, 0.0)),
+        };
+        let instance_1 = ObjectInstances::from_transforms(vec![transform, transform_2], 0);
+        InstanceData::new(vec![instance_1], device)
     }
-    pub fn setup_with_default_camera(
-        objects: Vec<Object>,
-        instance_data: InstanceData,
-        ar: f32,
-    ) -> Self {
-        let camera: Camera = Camera::new(std::f32::consts::FRAC_PI_2, ar, 0.1, 100.0);
-        let camera_uniform = CameraUniform::new(&camera);
-        Scene {
-            objects,
+
+    fn create_objects(device: &wgpu::Device) -> Vec<Object> {
+        use crate::constants::*;
+        use crate::util::create_objects;
+        create_objects(vec![VERTICES], vec![&INDICES], device)
+    }
+    fn add_objects(&mut self, objects: Vec<Object>) {
+        self.objects = objects;
+    }
+    fn add_instances(&mut self, instance_data: InstanceData) {
+        self.instance_data = instance_data;
+    }
+
+    fn new(device: &wgpu::Device, aspect_ratio: f32) -> Self {
+        let (camera, camera_uniform) = get_camera_default(aspect_ratio);
+        Self {
+            objects: Vec::new(),
+            instance_data: InstanceData::new(Vec::new(), device),
             camera,
-            instance_data,
             camera_uniform,
         }
+    }
+    fn get_objects(&self) -> &Vec<Object> {
+        &self.objects
+    }
+    fn get_instances(&self) -> &InstanceData {
+        &self.instance_data
     }
 }

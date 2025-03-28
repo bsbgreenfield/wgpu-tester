@@ -4,7 +4,7 @@ use winit::window::Window;
 
 use crate::{object::Object, vertex::Vertex};
 
-use super::app_config::AppConfig;
+use crate::app::app_config::AppConfig;
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -115,16 +115,16 @@ pub fn create_objects(
 ) -> Vec<Object> {
     let mut objects = Vec::with_capacity(vertices.len());
     for data in vertices.iter().zip(indices.iter()) {
-        let mut vertices_t: Vec<Vertex> = Vec::with_capacity(3);
-        // transform each vertex by dividing by its z value
-        for v in data.0.iter() {
-            let x = v.position[0] / v.position[2];
-            let y = v.position[1] / v.position[2];
-            vertices_t.push(Vertex {
-                position: [x, y, 1.0],
-            });
-        }
-        let o = Object::from_vertices(vertices_t.as_slice(), data.1, device);
+        // let mut vertices_t: Vec<Vertex> = Vec::with_capacity(3);
+        // // transform each vertex by dividing by its z value
+        // for v in data.0.iter() {
+        //     let x = v.position[0] / v.position[2];
+        //     let y = v.position[1] / v.position[2];
+        //     vertices_t.push(Vertex {
+        //         position: [x, y, 1.0],
+        //     });
+        // }
+        let o = Object::from_vertices(data.0, data.1, device);
         objects.push(o);
     }
     objects
