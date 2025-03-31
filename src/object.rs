@@ -3,12 +3,14 @@ use wgpu::util::DeviceExt;
 use crate::vertex::Vertex;
 use std::ops::Range;
 
+#[derive(Clone)]
 pub struct Mesh {
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub num_elements: usize,
 }
 
+#[derive(Clone)]
 pub struct Object {
     pub meshes: Vec<Mesh>,
 }
@@ -70,7 +72,7 @@ pub trait ToRawMatrix {
     fn as_raw_matrix(&self) -> [[f32; 4]; 4];
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ObjectTransform {
     pub transform_matrix: cgmath::Matrix4<f32>,
 }
@@ -121,8 +123,10 @@ impl ObjectTransform {
         [x_vector, y_vector, z_vector, w_vector]
     }
 
-    pub const fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
-        matrix
+    pub fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> Self {
+        Self {
+            transform_matrix: matrix.into(),
+        }
     }
 
     pub const fn identity() -> [[f32; 4]; 4] {

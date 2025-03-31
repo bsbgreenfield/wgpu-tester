@@ -1,15 +1,17 @@
 use super::app_config::AppConfig;
+use crate::constants::{INDICES, VERTICES};
 use crate::object::{ObjectTransform, ToRawMatrix};
-use crate::scene::{MyScene, Scene};
+use crate::scene::scene::{Scene, SceneDrawable, SceneScaffold};
 use crate::util;
 use crate::vertex::Vertex;
+use cgmath::SquareMatrix;
 use std::sync::Arc;
 use winit::window::Window;
 
 pub struct AppState<'a> {
     app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    scene: Box<dyn Scene>,
+    scene: Box<dyn SceneDrawable>,
     bind_groups: Vec<wgpu::BindGroup>,
 }
 
@@ -24,14 +26,14 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.height / app_config.size.width) as f32;
-        let mut scene = MyScene::new(&app_config.device, aspect_ratio);
-        scene.setup(&app_config.device);
+        let my_scene_scaffold = Self::create_scaffold(&app_config.device);
+        let scene = Scene::new(&app_config.device, aspect_ratio, Some(my_scene_scaffold));
         let camera_buffer = scene
             .camera
             .get_buffer(scene.camera_uniform, &app_config.device);
 
         let (camera_bind_group_layout, camera_bind_group) =
-            crate::scene::get_camera_bind_group(&camera_buffer, &app_config.device);
+            crate::scene::camera::get_camera_bind_group(&camera_buffer, &app_config.device);
 
         let bind_groups = vec![camera_bind_group];
 
@@ -102,7 +104,20 @@ impl<'a> AppState<'a> {
             bind_groups,
         }
     }
-
+    fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {
+        let mut my_scene: SceneScaffold =
+            SceneScaffold::from_vertices(vec![&VERTICES], vec![&INDICES], device);
+        let transform1_1 = cgmath::Matrix4::from_scale(2.0);
+        let transform_1_2 = cgmath::Matrix4::from_translation(cgmath::vec3(0.8, 0.0, 0.0));
+        let t1 = ObjectTransform {
+            transform_matrix: transform1_1,
+        };
+        let t2 = ObjectTransform {
+            transform_matrix: transform_1_2,
+        };
+        my_scene.add_instances(0, vec![t1, t2]);
+        my_scene
+    }
     pub fn update(&mut self) {
         //    let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.4));
         //    self.instance_data.apply_transforms(&[rot]);
@@ -146,29 +161,15 @@ impl<'a> AppState<'a> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-            // set instance buffer
-            render_pass.set_vertex_buffer(
-                1,
-                self.scene
-                    .get_instances()
-                    .instance_transform_buffer
-                    .slice(..),
-            );
-            render_pass.set_pipeline(&self.render_pipeline);
 
             // set all bind groups
             for (idx, bind_group) in self.bind_groups.iter().enumerate() {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
-            // for each object, draw as many instances as there are defined in
-            // self.instance data for that particular index
-
-            use crate::object::DrawObject;
-            for (idx, object) in self.scene.get_objects().iter().enumerate() {
-                let num_instances = self.scene.get_instances().object_instances[idx].num_instances;
-                let offset = self.scene.get_instances().object_instances[idx].offset_val;
-                render_pass.draw_object_instanced(object, offset..num_instances + offset);
+            render_pass.set_pipeline(&self.render_pipeline);
+            if self.scene.draw_scene(&mut render_pass).is_err() {
+                panic!("error");
             }
         }
         self.app_config

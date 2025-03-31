@@ -1,4 +1,6 @@
-use crate::vertex::Vertex;
+use std::vec;
+
+use crate::{scene::scene::SceneScaffold, vertex::Vertex};
 pub const INDICES: [u32; 3] = [0, 1, 2];
 pub const VERTICES: &[Vertex] = &[
     // front face 1
