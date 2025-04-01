@@ -19,9 +19,15 @@ pub enum SceneDrawError {
 pub trait SceneDrawable {
     // required functions to be able to draw the data from the scene on the screen
     fn get_instances(&self) -> Option<&InstanceData>;
+    fn get_instances_mut(&mut self) -> Option<&mut InstanceData>;
     fn get_objects(&self) -> Option<&Vec<Object>>;
     fn update_objects(&mut self, objects: Option<Vec<Object>>);
-    fn update_instances(&mut self, instance_data: Option<InstanceData>);
+    fn update_instances(
+        &mut self,
+        object_idx: usize,
+        instance_indices: Vec<usize>,
+        new_instances: &mut Vec<ObjectTransform>,
+    ) -> Option<Vec<[[f32; 4]; 4]>>;
     fn add_objects(&mut self, objects: Vec<Object>);
     fn add_instances(&mut self, instance_data: InstanceData);
     fn draw_scene<'a, 'b>(
@@ -95,11 +101,24 @@ impl SceneDrawable for Scene {
     fn get_instances(&self) -> Option<&InstanceData> {
         self.instance_data.as_ref()
     }
+    fn get_instances_mut(&mut self) -> Option<&mut InstanceData> {
+        self.instance_data.as_mut()
+    }
     fn update_objects(&mut self, objects: Option<Vec<Object>>) {
         self.objects = objects;
     }
-    fn update_instances(&mut self, instance_data: Option<InstanceData>) {
-        self.instance_data = instance_data;
+    fn update_instances(
+        &mut self,
+        object_idx: usize,
+        instance_indices: Vec<usize>,
+        new_instances: &mut Vec<ObjectTransform>,
+    ) -> Option<Vec<[[f32; 4]; 4]>> {
+        if let Some(instance_data) = self.instance_data.as_mut() {
+            instance_data.update_object_instances(object_idx, instance_indices, new_instances);
+            Some(instance_data.get_raw_data())
+        } else {
+            None
+        }
     }
 
     fn draw_scene<'a, 'b>(

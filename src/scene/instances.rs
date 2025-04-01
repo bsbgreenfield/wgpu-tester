@@ -14,6 +14,19 @@ pub struct InstanceData {
 }
 impl InstanceData {
     pub fn new(object_instances_list: Vec<ObjectInstances>, device: &wgpu::Device) -> Self {
+        let data = Self::_get_raw_data(&object_instances_list);
+
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance buffer"),
+            contents: bytemuck::cast_slice(&data),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        Self {
+            instance_transform_buffer: buffer,
+            object_instances: object_instances_list,
+        }
+    }
+    fn _get_raw_data(object_instances_list: &Vec<ObjectInstances>) -> Vec<[[f32; 4]; 4]> {
         let tot_num_instances: usize = object_instances_list
             .iter()
             .map(|e| e.transforms.len())
@@ -30,15 +43,33 @@ impl InstanceData {
             }
         }
 
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance buffer"),
-            contents: bytemuck::cast_slice(&data),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-        Self {
-            instance_transform_buffer: buffer,
-            object_instances: object_instances_list,
+        data
+    }
+
+    pub fn get_raw_data(&self) -> Vec<[[f32; 4]; 4]> {
+        Self::_get_raw_data(&self.object_instances)
+    }
+
+    /// update the instances for the object at the given index
+    pub fn update_object_instances(
+        &mut self,
+        object_idx: usize,
+        instance_indices: Vec<usize>,
+        new_instances: &mut Vec<ObjectTransform>,
+    ) {
+        for (i, idx) in instance_indices.iter().enumerate() {
+            // replace the instances at indices "idx" of object at index "object index"
+            let new_transform =
+                new_instances.remove(i) * self.object_instances[object_idx].transforms[*idx];
+            self.object_instances[object_idx].transforms[*idx] = new_transform;
         }
+    }
+
+    pub fn get_buffer(&self) -> &wgpu::Buffer {
+        &self.instance_transform_buffer
+    }
+    pub fn get_buffer_mut(&mut self) -> &mut wgpu::Buffer {
+        &mut self.instance_transform_buffer
     }
 
     fn create_instance_buffer_from_raw(

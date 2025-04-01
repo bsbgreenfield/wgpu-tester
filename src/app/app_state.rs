@@ -8,6 +8,10 @@ use cgmath::SquareMatrix;
 use std::sync::Arc;
 use winit::window::Window;
 
+pub enum UpdateResult {
+    UpdateError,
+}
+
 pub struct AppState<'a> {
     app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
@@ -25,7 +29,7 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
 
-        let aspect_ratio = (app_config.size.height / app_config.size.width) as f32;
+        let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
         let my_scene_scaffold = Self::create_scaffold(&app_config.device);
         let scene = Scene::new(&app_config.device, aspect_ratio, Some(my_scene_scaffold));
         let camera_buffer = scene
@@ -107,7 +111,7 @@ impl<'a> AppState<'a> {
     fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {
         let mut my_scene: SceneScaffold =
             SceneScaffold::from_vertices(vec![&VERTICES], vec![&INDICES], device);
-        let transform1_1 = cgmath::Matrix4::from_scale(2.0);
+        let transform1_1 = cgmath::Matrix4::identity();
         let transform_1_2 = cgmath::Matrix4::from_translation(cgmath::vec3(0.8, 0.0, 0.0));
         let t1 = ObjectTransform {
             transform_matrix: transform1_1,
@@ -115,18 +119,31 @@ impl<'a> AppState<'a> {
         let t2 = ObjectTransform {
             transform_matrix: transform_1_2,
         };
-        my_scene.add_instances(0, vec![t1, t2]);
+        my_scene.add_instances(0, vec![t1]);
         my_scene
     }
-    pub fn update(&mut self) {
-        //    let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.4));
-        //    self.instance_data.apply_transforms(&[rot]);
-        //    let data = self.instance_data.as_raw_data();
-        //    self.app_config.queue.write_buffer(
-        //        &self.instance_data.instance_transform_buffer,
-        //        0,
-        //        bytemuck::cast_slice(&data),
-        //    );
+
+    pub fn update(&mut self) -> Result<(), UpdateResult> {
+        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.2));
+        // update instance data field
+        // re process instance data into new Vec<[]>
+        // write buffer with data
+        let new_transforms = &mut vec![ObjectTransform {
+            transform_matrix: rot,
+        }];
+        match self.scene.get_instances_mut() {
+            Some(instance_data) => {
+                instance_data.update_object_instances(0, vec![0], new_transforms);
+                let data = instance_data.get_raw_data();
+                self.app_config.queue.write_buffer(
+                    instance_data.get_buffer(),
+                    0,
+                    bytemuck::cast_slice(&data),
+                );
+                Ok(())
+            }
+            None => Err(UpdateResult::UpdateError),
+        }
     }
 
     pub fn draw(&self) -> Result<(), wgpu::SurfaceError> {

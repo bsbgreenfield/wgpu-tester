@@ -1,7 +1,10 @@
 use std::vec;
 
 use crate::{scene::scene::SceneScaffold, vertex::Vertex};
-pub const INDICES: [u32; 3] = [0, 1, 2];
+pub const INDICES: [u32; 36] = [
+    0, 1, 2, 0, 2, 3, 3, 2, 4, 3, 4, 5, 5, 4, 6, 5, 6, 7, 7, 6, 1, 7, 1, 0, 7, 0, 3, 7, 3, 5, 4, 2,
+    1, 4, 2, 6,
+];
 pub const VERTICES: &[Vertex] = &[
     // front face 1
     Vertex {
@@ -13,36 +16,21 @@ pub const VERTICES: &[Vertex] = &[
     Vertex {
         position: [0.5, -0.5, 0.0], // 2
     },
-    // Vertex {
-    //     position: [0.5, 0.5, 0.0], // 3
-    // },
-    // Vertex {
-    //     position: [0.5, 0.5, 0.5], // 4
-    // },
-    // Vertex {
-    //     position: [0.5, -0.5, 0.5], // 5
-    // },
-    // back face
-    // Vertex {
-    //     position: [0.5, 0.5, 0.5], // 4
-    // },
-    // Vertex {
-    //     position: [0.5, -0.5, 0.5], // 5
-    // },
-    // Vertex {
-    //     position: [-0.5, -0.5, 0.5], // 6
-    // },
-    // Vertex {
-    //     position: [-0.5, 0.5, 0.5], // 7
-    // },
-    // right side
-
-    // index 3
-    // index 2
-    // index 6
-    // index 3
-    // index 6
-    // index 7
+    Vertex {
+        position: [0.5, 0.5, 0.0], // 3
+    },
+    Vertex {
+        position: [0.5, -0.5, -1.0], // 4
+    },
+    Vertex {
+        position: [0.5, 0.5, -1.0], // 5
+    },
+    Vertex {
+        position: [-0.5, -0.5, -1.0], // 6
+    },
+    Vertex {
+        position: [-0.5, 0.5, -1.0], // 7
+    },
 ];
 
 pub const INDICES_2: [u32; 6] = [0, 1, 2, 0, 2, 3];

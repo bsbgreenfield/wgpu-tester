@@ -25,7 +25,7 @@ impl Camera {
             znear,
             eye_pos: cgmath::Point3 {
                 x: 0.0,
-                y: 1.0,
+                y: 5.0,
                 z: 10.0,
             },
             up: cgmath::Vector3::unit_y(),

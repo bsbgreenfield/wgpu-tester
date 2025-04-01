@@ -94,6 +94,7 @@ impl ApplicationHandler for App<'_> {
                 if !self.surface_configured {
                     return;
                 }
+                self.update_state();
                 self.window.as_ref().unwrap().request_redraw();
                 match self.app_state.as_ref().unwrap().draw() {
                     Ok(_) => {}

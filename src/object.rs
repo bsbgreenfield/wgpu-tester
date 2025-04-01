@@ -1,7 +1,7 @@
 use wgpu::util::DeviceExt;
 
 use crate::vertex::Vertex;
-use std::ops::Range;
+use std::ops::{self, Range};
 
 #[derive(Clone)]
 pub struct Mesh {
@@ -76,7 +76,14 @@ pub trait ToRawMatrix {
 pub struct ObjectTransform {
     pub transform_matrix: cgmath::Matrix4<f32>,
 }
-
+impl ops::Mul<ObjectTransform> for ObjectTransform {
+    type Output = ObjectTransform;
+    fn mul(self, rhs: ObjectTransform) -> Self::Output {
+        ObjectTransform {
+            transform_matrix: self.transform_matrix * rhs.transform_matrix,
+        }
+    }
+}
 impl ToRawMatrix for ObjectTransform {
     fn as_raw_matrix(&self) -> [[f32; 4]; 4] {
         self.transform_matrix.into()
