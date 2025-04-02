@@ -19,6 +19,8 @@ pub enum SceneDrawError {
 pub trait SceneDrawable {
     // required functions to be able to draw the data from the scene on the screen
     fn get_instances(&self) -> Option<&InstanceData>;
+    fn get_camera_buf(&self) -> &wgpu::Buffer;
+    fn get_camera_uniform_data(&self) -> [[f32; 4]; 4];
     fn get_instances_mut(&mut self) -> Option<&mut InstanceData>;
     fn get_objects(&self) -> Option<&Vec<Object>>;
     fn update_objects(&mut self, objects: Option<Vec<Object>>);
@@ -30,6 +32,7 @@ pub trait SceneDrawable {
     ) -> Option<Vec<[[f32; 4]; 4]>>;
     fn add_objects(&mut self, objects: Vec<Object>);
     fn add_instances(&mut self, instance_data: InstanceData);
+    fn update_camera_pos(&mut self, x: f32, y: f32, z: f32);
     fn draw_scene<'a, 'b>(
         &'a self,
         render_pass: &mut wgpu::RenderPass<'b>,
@@ -49,13 +52,12 @@ pub struct Scene {
     pub objects: Option<Vec<Object>>,
     pub instance_data: Option<InstanceData>,
     pub camera: Camera,
-    pub camera_uniform: CameraUniform,
 }
 
 impl Scene {
     /// instantiate a new scene. If used with a scaffold
     pub fn new(device: &wgpu::Device, aspect_ratio: f32, scaffold: Option<SceneScaffold>) -> Self {
-        let (camera, camera_uniform) = get_camera_default(aspect_ratio);
+        let camera = get_camera_default(aspect_ratio, device);
         let (objects, instance_data): (Option<Vec<Object>>, Option<InstanceData>) = match scaffold {
             Some(s) => (
                 Some(s.objects.clone()),
@@ -67,7 +69,6 @@ impl Scene {
             objects,
             instance_data,
             camera,
-            camera_uniform,
         }
     }
     /// for each object in scaffold, create an instance of [ObjectInstances]
@@ -89,6 +90,15 @@ impl Scene {
 }
 
 impl SceneDrawable for Scene {
+    fn get_camera_uniform_data(&self) -> [[f32; 4]; 4] {
+        self.camera.camera_uniform.view_proj
+    }
+    fn get_camera_buf(&self) -> &wgpu::Buffer {
+        &self.camera.camera_buffer
+    }
+    fn update_camera_pos(&mut self, x: f32, y: f32, z: f32) {
+        self.camera.update_position(cgmath::point3(x, y, z));
+    }
     fn add_objects(&mut self, objects: Vec<Object>) {
         self.objects = Some(objects);
     }

@@ -1,6 +1,5 @@
 use super::app_state::AppState;
-use crate::util;
-use std::{arch::aarch64::vcvt_high_f32_f64, collections::HashMap, str, sync::Arc};
+use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -9,20 +8,6 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{self, Window},
 };
-
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CtrUniform {
-    trans: [[f32; 4]; 4],
-}
-
-impl CtrUniform {
-    pub fn new() -> Self {
-        Self {
-            trans: (util::OPENGL_TO_WGPU_MATRIX).into(),
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct App<'a> {
@@ -34,6 +19,20 @@ pub struct App<'a> {
 impl App<'_> {
     fn update_state(&mut self) {
         self.app_state.as_mut().unwrap().update();
+    }
+    fn process_keypress(&mut self, state: ElementState, keycode: KeyCode) {
+        if let Some(app_state) = self.app_state.as_mut() {
+            let is_pressed = state == ElementState::Pressed;
+            match keycode {
+                KeyCode::KeyD => {
+                    app_state.input_controller.key_d_down = is_pressed;
+                }
+                KeyCode::KeyA => {
+                    app_state.input_controller.key_a_down = is_pressed;
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -53,7 +52,6 @@ impl ApplicationHandler for App<'_> {
             window.request_redraw();
         }
     }
-
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -61,6 +59,18 @@ impl ApplicationHandler for App<'_> {
         event: WindowEvent,
     ) {
         match event {
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state,
+                        physical_key: PhysicalKey::Code(keycode),
+                        ..
+                    },
+                ..
+            } => {
+                self.process_keypress(state, keycode);
+            }
+
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {

@@ -6,7 +6,25 @@ use crate::util;
 use crate::vertex::Vertex;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
+use winit::keyboard::KeyCode;
 use winit::window::Window;
+
+pub struct InputController {
+    pub key_d_down: bool,
+    key_w_down: bool,
+    pub key_a_down: bool,
+    key_s_down: bool,
+}
+impl InputController {
+    pub fn new() -> Self {
+        Self {
+            key_a_down: false,
+            key_d_down: false,
+            key_s_down: false,
+            key_w_down: false,
+        }
+    }
+}
 
 pub enum UpdateResult {
     UpdateError,
@@ -17,6 +35,7 @@ pub struct AppState<'a> {
     render_pipeline: wgpu::RenderPipeline,
     scene: Box<dyn SceneDrawable>,
     bind_groups: Vec<wgpu::BindGroup>,
+    pub input_controller: InputController,
 }
 
 impl<'a> AppState<'a> {
@@ -32,12 +51,9 @@ impl<'a> AppState<'a> {
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
         let my_scene_scaffold = Self::create_scaffold(&app_config.device);
         let scene = Scene::new(&app_config.device, aspect_ratio, Some(my_scene_scaffold));
-        let camera_buffer = scene
-            .camera
-            .get_buffer(scene.camera_uniform, &app_config.device);
 
         let (camera_bind_group_layout, camera_bind_group) =
-            crate::scene::camera::get_camera_bind_group(&camera_buffer, &app_config.device);
+            crate::scene::camera::get_camera_bind_group(scene.get_camera_buf(), &app_config.device);
 
         let bind_groups = vec![camera_bind_group];
 
@@ -106,6 +122,7 @@ impl<'a> AppState<'a> {
             render_pipeline,
             scene: Box::new(scene),
             bind_groups,
+            input_controller: InputController::new(),
         }
     }
     fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {
@@ -122,8 +139,22 @@ impl<'a> AppState<'a> {
         my_scene.add_instances(0, vec![t1]);
         my_scene
     }
+    fn process_input(&mut self) {
+        if self.input_controller.key_a_down {
+            self.scene.update_camera_pos(-0.05, 0.0, 0.0);
+        }
+        if self.input_controller.key_d_down {
+            self.scene.update_camera_pos(0.05, 0.0, 0.0);
+        }
+        self.app_config.queue.write_buffer(
+            self.scene.get_camera_buf(),
+            0,
+            bytemuck::cast_slice(&self.scene.get_camera_uniform_data()),
+        );
+    }
 
     pub fn update(&mut self) -> Result<(), UpdateResult> {
+        self.process_input();
         let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.2));
         // update instance data field
         // re process instance data into new Vec<[]>
