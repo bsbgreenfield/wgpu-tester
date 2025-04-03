@@ -41,11 +41,16 @@ impl CameraData {
         self.eye_pos.add_assign_element_wise(point);
         self.target.add_assign_element_wise(point);
     }
+
+    fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
+        self.target.add_assign_element_wise(rot);
+    }
 }
 pub struct Camera {
     camera_data: CameraData,
     pub camera_uniform: CameraUniform,
     pub camera_buffer: wgpu::Buffer,
+    pub speed: f32,
 }
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -56,7 +61,14 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
 );
 
 impl Camera {
-    pub fn new(fov: f32, aspect_ratio: f32, znear: f32, zfar: f32, device: &wgpu::Device) -> Self {
+    pub fn new(
+        fov: f32,
+        aspect_ratio: f32,
+        znear: f32,
+        zfar: f32,
+        speed: f32,
+        device: &wgpu::Device,
+    ) -> Self {
         let camera_data = CameraData::new(fov, aspect_ratio, znear, zfar);
         let camera_uniform: CameraUniform = CameraUniform::new(&camera_data);
         let camera_buffer: wgpu::Buffer = Self::create_buffer(camera_uniform, device);
@@ -64,6 +76,7 @@ impl Camera {
             camera_data,
             camera_uniform,
             camera_buffer,
+            speed,
         }
     }
     fn create_buffer(camera_uniform: CameraUniform, device: &wgpu::Device) -> wgpu::Buffer {
@@ -76,6 +89,10 @@ impl Camera {
 
     pub fn update_position(&mut self, point: cgmath::Point3<f32>) {
         self.camera_data.update_position(point);
+        self.camera_uniform.update(&self.camera_data);
+    }
+    pub fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
+        self.camera_data.update_rot(rot);
         self.camera_uniform.update(&self.camera_data);
     }
 }
@@ -131,6 +148,7 @@ pub fn get_camera_default(aspect_ratio: f32, device: &wgpu::Device) -> Camera {
         aspect_ratio,
         0.1,
         100.0,
+        0.05,
         device,
     );
     camera

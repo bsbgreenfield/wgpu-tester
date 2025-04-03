@@ -20,7 +20,12 @@ impl App<'_> {
     fn update_state(&mut self) {
         self.app_state.as_mut().unwrap().update();
     }
-    fn process_keypress(&mut self, state: ElementState, keycode: KeyCode) {
+    fn process_keypress(
+        &mut self,
+        state: ElementState,
+        keycode: KeyCode,
+        event_loop: &ActiveEventLoop,
+    ) {
         if let Some(app_state) = self.app_state.as_mut() {
             let is_pressed = state == ElementState::Pressed;
             match keycode {
@@ -29,6 +34,21 @@ impl App<'_> {
                 }
                 KeyCode::KeyA => {
                     app_state.input_controller.key_a_down = is_pressed;
+                }
+                KeyCode::KeyW => {
+                    app_state.input_controller.key_w_down = is_pressed;
+                }
+                KeyCode::KeyS => {
+                    app_state.input_controller.key_s_down = is_pressed;
+                }
+                KeyCode::KeyQ => {
+                    app_state.input_controller.key_q_down = is_pressed;
+                }
+                KeyCode::KeyE => {
+                    app_state.input_controller.key_e_down = is_pressed;
+                }
+                KeyCode::Escape => {
+                    event_loop.exit();
                 }
                 _ => {}
             }
@@ -68,31 +88,9 @@ impl ApplicationHandler for App<'_> {
                     },
                 ..
             } => {
-                self.process_keypress(state, keycode);
+                self.process_keypress(state, keycode, event_loop);
             }
 
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        ..
-                    },
-                ..
-            } => event_loop.exit(),
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state: ElementState::Pressed,
-                        physical_key: PhysicalKey::Code(KeyCode::KeyL),
-                        ..
-                    },
-                ..
-            } => {
-                if self.window.is_some() {
-                    println!("{:?}", self.window.as_ref().unwrap());
-                }
-            }
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }

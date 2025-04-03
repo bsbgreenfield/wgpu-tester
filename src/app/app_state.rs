@@ -6,14 +6,15 @@ use crate::util;
 use crate::vertex::Vertex;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
-use winit::keyboard::KeyCode;
 use winit::window::Window;
 
 pub struct InputController {
     pub key_d_down: bool,
-    key_w_down: bool,
+    pub key_w_down: bool,
     pub key_a_down: bool,
-    key_s_down: bool,
+    pub key_s_down: bool,
+    pub key_q_down: bool,
+    pub key_e_down: bool,
 }
 impl InputController {
     pub fn new() -> Self {
@@ -22,6 +23,8 @@ impl InputController {
             key_d_down: false,
             key_s_down: false,
             key_w_down: false,
+            key_q_down: false,
+            key_e_down: false,
         }
     }
 }
@@ -140,12 +143,27 @@ impl<'a> AppState<'a> {
         my_scene
     }
     fn process_input(&mut self) {
+        let speed: f32 = self.scene.get_speed();
         if self.input_controller.key_a_down {
-            self.scene.update_camera_pos(-0.05, 0.0, 0.0);
+            self.scene.update_camera_pos(-speed, 0.0, 0.0);
         }
         if self.input_controller.key_d_down {
-            self.scene.update_camera_pos(0.05, 0.0, 0.0);
+            self.scene.update_camera_pos(speed, 0.0, 0.0);
         }
+        if self.input_controller.key_s_down {
+            self.scene.update_camera_pos(0.0, 0.0, speed);
+        }
+        if self.input_controller.key_w_down {
+            self.scene.update_camera_pos(0.0, 0.0, -speed);
+        }
+        // if self.input_controller.key_q_down {
+        //     self.scene
+        //         .update_camera_rot(cgmath::point3(-speed, 0.0, 0.0));
+        // }
+        // if self.input_controller.key_e_down {
+        //     self.scene
+        //         .update_camera_rot(cgmath::point3(speed, 0.0, 0.0));
+        // }
         self.app_config.queue.write_buffer(
             self.scene.get_camera_buf(),
             0,

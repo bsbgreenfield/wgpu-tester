@@ -18,6 +18,7 @@ pub enum SceneDrawError {
 /// otherwise, you **must** call scene.setup  
 pub trait SceneDrawable {
     // required functions to be able to draw the data from the scene on the screen
+    fn get_speed(&self) -> f32;
     fn get_instances(&self) -> Option<&InstanceData>;
     fn get_camera_buf(&self) -> &wgpu::Buffer;
     fn get_camera_uniform_data(&self) -> [[f32; 4]; 4];
@@ -33,6 +34,7 @@ pub trait SceneDrawable {
     fn add_objects(&mut self, objects: Vec<Object>);
     fn add_instances(&mut self, instance_data: InstanceData);
     fn update_camera_pos(&mut self, x: f32, y: f32, z: f32);
+    fn update_camera_rot(&mut self, rot: cgmath::Point3<f32>);
     fn draw_scene<'a, 'b>(
         &'a self,
         render_pass: &mut wgpu::RenderPass<'b>,
@@ -90,11 +92,17 @@ impl Scene {
 }
 
 impl SceneDrawable for Scene {
+    fn get_speed(&self) -> f32 {
+        return self.camera.speed;
+    }
     fn get_camera_uniform_data(&self) -> [[f32; 4]; 4] {
         self.camera.camera_uniform.view_proj
     }
     fn get_camera_buf(&self) -> &wgpu::Buffer {
         &self.camera.camera_buffer
+    }
+    fn update_camera_rot(&mut self, rot: cgmath::Point3<f32>) {
+        self.camera.update_rot(rot);
     }
     fn update_camera_pos(&mut self, x: f32, y: f32, z: f32) {
         self.camera.update_position(cgmath::point3(x, y, z));
