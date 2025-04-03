@@ -1,7 +1,8 @@
 use wgpu::util::DeviceExt;
 
-use crate::vertex::Vertex;
 use std::ops::{self, Range};
+
+use crate::model::vertex::ModelVertex;
 
 #[derive(Clone)]
 pub struct Mesh {
@@ -16,7 +17,7 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn from_vertices(vertices: &[Vertex], indices: &[u32], device: &wgpu::Device) -> Self {
+    pub fn from_vertices(vertices: &[ModelVertex], indices: &[u32], device: &wgpu::Device) -> Self {
         let mesh = Mesh {
             vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,

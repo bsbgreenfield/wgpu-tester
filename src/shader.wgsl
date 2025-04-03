@@ -1,5 +1,6 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
+  @location(1) normal: vec3<f32>,
   @builtin(vertex_index) index: u32,
 }
 

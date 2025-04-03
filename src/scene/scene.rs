@@ -1,10 +1,10 @@
-use wgpu::{core::device, BufferSlice};
-
 use super::{camera::*, instances::*};
 use crate::{
-    object::{DrawObject, Object, ObjectTransform},
+    model::{
+        model::{DrawObject, Object, ObjectTransform},
+        vertex::ModelVertex,
+    },
     util::create_objects,
-    vertex::Vertex,
 };
 
 pub enum SceneDrawError {
@@ -167,7 +167,7 @@ impl SceneDrawable for Scene {
     }
 }
 
-use std::{collections::HashMap, error::Error, ops::Deref, slice};
+use std::collections::HashMap;
 
 pub struct SceneScaffold {
     objects: Vec<Object>,
@@ -176,7 +176,7 @@ pub struct SceneScaffold {
 
 impl SceneScaffold {
     pub fn from_vertices(
-        vertices: Vec<&[Vertex]>,
+        vertices: Vec<&[ModelVertex]>,
         indices: Vec<&[u32]>,
         device: &wgpu::Device,
     ) -> Self {

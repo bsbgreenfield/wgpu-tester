@@ -1,6 +1,7 @@
-use crate::object::{ObjectTransform, ToRawMatrix};
 use cgmath::Transform;
 use wgpu::util::DeviceExt;
+
+use crate::model::model::{ObjectTransform, ToRawMatrix};
 #[derive(Debug)]
 pub struct ObjectInstances {
     pub transforms: Vec<ObjectTransform>,

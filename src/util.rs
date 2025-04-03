@@ -1,8 +1,9 @@
-use std::{ops::Deref, sync::Arc};
+use crate::model::model::Object;
+use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use crate::{object::Object, vertex::Vertex};
+use crate::model::vertex::ModelVertex;
 
 use crate::app::app_config::AppConfig;
 
@@ -109,7 +110,7 @@ where
 }
 
 pub fn create_objects(
-    vertices: Vec<&[Vertex]>,
+    vertices: Vec<&[ModelVertex]>,
     indices: Vec<&[u32]>,
     device: &wgpu::Device,
 ) -> Vec<Object> {
