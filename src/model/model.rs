@@ -12,11 +12,11 @@ pub struct Mesh {
 }
 
 #[derive(Clone)]
-pub struct Object {
+pub struct Model {
     pub meshes: Vec<Mesh>,
 }
 
-impl Object {
+impl Model {
     pub fn from_vertices(vertices: &[ModelVertex], indices: &[u32], device: &wgpu::Device) -> Self {
         let mesh = Mesh {
             vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -36,14 +36,14 @@ impl Object {
     }
 }
 
-pub trait DrawObject<'a> {
+pub trait DrawModel<'a> {
     fn draw_mesh(&mut self, mesh: &'a Mesh);
     fn draw_mesh_instanced(&mut self, mesh: &'a Mesh, instances: Range<u32>);
-    fn draw_object(&mut self, object: &'a Object);
-    fn draw_object_instanced(&mut self, object: &'a Object, instances: Range<u32>);
+    fn draw_model(&mut self, object: &'a Model);
+    fn draw_model_instanced(&mut self, model: &'a Model, instances: Range<u32>);
 }
 
-impl<'a, 'b> DrawObject<'b> for wgpu::RenderPass<'a>
+impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
@@ -57,19 +57,18 @@ where
         self.draw_indexed(0..mesh.num_elements as u32, 0, instances);
     }
 
-    fn draw_object(&mut self, object: &'b Object) {
-        self.draw_object_instanced(object, 0..1);
+    fn draw_model(&mut self, model: &'b Model) {
+        self.draw_model_instanced(model, 0..1);
     }
 
-    fn draw_object_instanced(&mut self, object: &'b Object, instances: Range<u32>) {
-        for mesh in &object.meshes {
+    fn draw_model_instanced(&mut self, model: &'b Model, instances: Range<u32>) {
+        for mesh in &model.meshes {
             self.draw_mesh_instanced(mesh, instances.clone());
         }
     }
 }
 
 pub trait ToRawMatrix {
-    fn desc() -> wgpu::VertexBufferLayout<'static>;
     fn as_raw_matrix(&self) -> [[f32; 4]; 4];
 }
 
@@ -85,12 +84,32 @@ impl ops::Mul<ObjectTransform> for ObjectTransform {
         }
     }
 }
-impl ToRawMatrix for ObjectTransform {
-    fn as_raw_matrix(&self) -> [[f32; 4]; 4] {
-        self.transform_matrix.into()
+
+impl ObjectTransform {
+    pub const fn raw_matrix_from_vectors(
+        x_vector: [f32; 4],
+        y_vector: [f32; 4],
+        z_vector: [f32; 4],
+        w_vector: [f32; 4],
+    ) -> [[f32; 4]; 4] {
+        [x_vector, y_vector, z_vector, w_vector]
     }
 
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
+    pub fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> Self {
+        Self {
+            transform_matrix: matrix.into(),
+        }
+    }
+
+    pub const fn identity() -> [[f32; 4]; 4] {
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    }
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
         wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
@@ -120,29 +139,8 @@ impl ToRawMatrix for ObjectTransform {
         }
     }
 }
-
-impl ObjectTransform {
-    pub const fn raw_matrix_from_vectors(
-        x_vector: [f32; 4],
-        y_vector: [f32; 4],
-        z_vector: [f32; 4],
-        w_vector: [f32; 4],
-    ) -> [[f32; 4]; 4] {
-        [x_vector, y_vector, z_vector, w_vector]
-    }
-
-    pub fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> Self {
-        Self {
-            transform_matrix: matrix.into(),
-        }
-    }
-
-    pub const fn identity() -> [[f32; 4]; 4] {
-        [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ]
+impl ToRawMatrix for ObjectTransform {
+    fn as_raw_matrix(&self) -> [[f32; 4]; 4] {
+        self.transform_matrix.into()
     }
 }

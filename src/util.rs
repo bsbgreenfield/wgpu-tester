@@ -1,4 +1,4 @@
-use crate::model::model::Object;
+use crate::model::model::Model;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
@@ -109,15 +109,15 @@ where
     (bind_group_layout, bind_group)
 }
 
-pub fn create_objects(
+pub fn create_models(
     vertices: Vec<&[ModelVertex]>,
     indices: Vec<&[u32]>,
     device: &wgpu::Device,
-) -> Vec<Object> {
-    let mut objects = Vec::with_capacity(vertices.len());
+) -> Vec<Model> {
+    let mut models = Vec::with_capacity(vertices.len());
     for data in vertices.iter().zip(indices.iter()) {
-        let o = Object::from_vertices(data.0, data.1, device);
-        objects.push(o);
+        let o = Model::from_vertices(data.0, data.1, device);
+        models.push(o);
     }
-    objects
+    models
 }
