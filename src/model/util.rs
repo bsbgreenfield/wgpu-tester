@@ -2,32 +2,26 @@ use super::model::Model;
 use gltf::{Accessor, Gltf, Mesh, Node};
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::{env, fs};
 
 pub struct NodeWrapper<'a> {
-    node_tree: Rc<RefCell<GNodeCell<'a>>>,
+    node_ref: Rc<GNode<'a>>,
     child_indices: Vec<usize>,
-}
-pub struct GNodeCell<'a> {
-    children: Vec<Rc<RefCell<GNodeCell<'a>>>>,
-    transform: [[f32; 4]; 4],
-    mesh: Option<GMesh<'a>>,
 }
 // a Node has a mesh and a transform
 pub struct GNode<'a> {
-    children: Vec<Rc<GNode<'a>>>,
+    children: RefCell<Vec<Rc<GNode<'a>>>>,
     transform: [[f32; 4]; 4],
     mesh: Option<GMesh<'a>>,
 }
-
 impl<'a> GNode<'a> {
-    fn add_child(&mut self, gnode_ref: &Rc<GNode<'a>>) {
-        self.children.push(gnode_ref.clone());
+    fn add_child(self: &Rc<Self>, child: Rc<GNode<'a>>) {
+        self.children.borrow_mut().push(child);
     }
 }
-
 pub struct GMesh<'a> {
     index_slice: &'a [u8],
     vertex_slice: &'a [u8],
@@ -35,15 +29,18 @@ pub struct GMesh<'a> {
 }
 
 impl<'a> GMesh<'a> {
-    pub fn new(mesh: &Option<Mesh>) -> Option<Self> {
-        if mesh.is_none() {
+    pub fn new(maybe_mesh: &Option<Mesh>, buffer_data: &Vec<u8>) -> Option<Self> {
+        if let Some(mesh) = maybe_mesh {
+            // for now, only accept one primitive per mesh
+            let primitive = mesh.primitives().nth(1);
+            Some(Self {
+                index_slice: &[],
+                vertex_slice: &[],
+                normal_slice: &[],
+            })
+        } else {
             return None;
         }
-        Some(Self {
-            index_slice: &[],
-            vertex_slice: &[],
-            normal_slice: &[],
-        })
     }
 }
 
@@ -61,85 +58,58 @@ pub struct GScene<'a> {
 }
 
 impl<'a> GScene<'a> {
-    fn get_root_nodes(g_nodes: &Vec<NodeWrapper>) -> Vec<usize> {
-        let mut children = HashSet::<usize>::new();
-        for node in g_nodes {
-            for i in node.child_indices.iter() {
-                children.insert(*i);
-            }
-        }
-        println!("indices that are listed as children: {:?}", children);
-        // root nodes are the indices from 0 to g_nodes.len() that aren't in this list
-        let mut root_nodes_ids = Vec::<usize>::new();
-        for i in 0..g_nodes.len() {
-            if !children.contains(&i) {
-                root_nodes_ids.push(i);
-            }
-        }
-        root_nodes_ids
-    }
-    /// When building a scene, we dont know how many models we have
-    /// the [new()] function builds out one or more trees of nodes, and
-    /// each model is defined as something that owns a root node.
-    pub fn new(nodes: gltf::iter::Nodes) -> Self {
-        let mut g_nodes = Vec::<NodeWrapper>::with_capacity(nodes.len());
-
-        // first pass
-        for node in nodes {
-            let mesh = GMesh::new(&node.mesh());
-            let transform = node.transform().matrix();
-            let children: Vec<usize> = node.children().map(|c| c.index()).collect();
-            println!("This node has children: {:?}", children);
-            // in this first pass process all node data besides the children to ensure that
-            // everything actually exists before recursing.
-            let node = GNodeCell {
-                mesh,
-                transform,
-                children: Vec::with_capacity(children.len()),
-            };
-            g_nodes.push(NodeWrapper {
-                node_tree: Rc::new(RefCell::new(node)),
-                child_indices: children,
-            });
-        }
-        let root_nodes_ids: Vec<usize> = Self::get_root_nodes(&g_nodes);
-        let mut completed_roots = Vec::<NodeWrapper>::new();
-        // next, go through the root nodes and recurse to build the trees
-        for idx in root_nodes_ids {
-            println!("Got root at index {}", idx);
-            let root_wrapper = g_nodes.remove(idx);
-            let child_indices = &root_wrapper.child_indices;
-            get_node_tree(&g_nodes, root_wrapper.node_tree.clone(), child_indices);
-            print_node(&root_wrapper.node_tree);
-            completed_roots.push(root_wrapper);
-        }
+    pub fn new(nodes: gltf::iter::Nodes, root_nodes_ids: Vec<usize>, buffer_data: Vec<u8>) -> Self {
+        // step 1: get the nodes
+        let g_nodes = get_nodes(nodes, root_nodes_ids, buffer_data);
         Self { models: vec![] }
     }
 }
 
-fn print_node<'a>(node_wrapper: &Rc<RefCell<GNodeCell<'a>>>) {
-    println!(
-        "This node has {} children",
-        node_wrapper.borrow().children.len()
-    );
-    for (idx, child) in node_wrapper.borrow().children.iter().enumerate() {
-        println!("child # {}:", idx);
-        print_node(child);
+fn get_nodes(
+    nodes: gltf::iter::Nodes,
+    root_nodes_ids: Vec<usize>,
+    buffer_data: Vec<u8>,
+) -> Vec<Rc<GNode>> {
+    let mut node_wrappers = Vec::<NodeWrapper>::with_capacity(nodes.len());
+    let mut ret: Vec<Rc<GNode>> = Vec::with_capacity(root_nodes_ids.len());
+    for node in nodes {
+        let mesh = GMesh::new(&node.mesh(), &buffer_data);
+        let transform = node.transform().matrix();
+        let children: Vec<usize> = node.children().map(|c| c.index()).collect();
+        // in this first pass process all node data besides the children to ensure that
+        // everything actually exists before recursing.
+        let node = GNode {
+            mesh,
+            transform,
+            children: RefCell::new(Vec::with_capacity(children.len())),
+        };
+        // push a reference to the node to the g_nodes vec, along with the indices it will need
+        node_wrappers.push(NodeWrapper {
+            node_ref: Rc::new(node),
+            child_indices: children,
+        });
+        // for each root node, loop through the children at the indices specified for this node
+        // clone a new Rc from the Rc<child> node and add it to the children vec
+        for i in &root_nodes_ids {
+            let root_node = &node_wrappers[*i].node_ref.clone();
+            let child_indices = &node_wrappers[*i].child_indices;
+            build_node(&node_wrappers, root_node, child_indices);
+            ret.push(root_node.clone());
+        }
     }
+    ret
 }
 
-fn get_node_tree<'a>(
+fn build_node<'a>(
     g_nodes: &Vec<NodeWrapper<'a>>,
-    root_node: Rc<RefCell<GNodeCell<'a>>>,
+    root_node: &Rc<GNode<'a>>,
     child_indices: &Vec<usize>,
 ) {
-    // for each child of root node, recurse into the child to add its children
-    for child_idx in child_indices {
-        let child = Rc::clone(&g_nodes[*child_idx].node_tree);
-        let child_ids = &g_nodes[*child_idx].child_indices;
-        get_node_tree(&g_nodes, child.clone(), child_ids);
-
-        root_node.borrow_mut().children.push(child);
+    for child_id in child_indices {
+        let child_wrapper = &g_nodes[*child_id];
+        let child = child_wrapper.node_ref.clone();
+        build_node(g_nodes, &child, child_indices);
+        root_node.add_child(child);
     }
 }
 
@@ -161,7 +131,8 @@ pub fn load_gltf(dirname: &str) -> Result<Vec<Model>, gltf::Error> {
     // only use the first scene for now
     let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
     let models = Vec::<Model>::with_capacity(gltf.nodes().len());
-    let scene: GScene = GScene::new(gltf.nodes());
+    let root_nodes = scene.nodes().map(|n| n.index()).collect();
+    let scene: GScene = GScene::new(gltf.nodes(), root_nodes, buffer_data);
     Ok(vec![])
 }
 
