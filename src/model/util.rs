@@ -1,4 +1,4 @@
-use super::model::Model;
+use super::model::{Model, ObjectTransform};
 use gltf::accessor::DataType;
 use gltf::buffer::View;
 use gltf::{Accessor, Gltf, Mesh, Node};
@@ -17,6 +17,7 @@ pub enum GltfErrors {
     NoPrimitive,
     IndicesError(String),
     VericesError(String),
+    NormalsError(String),
 }
 
 pub struct NodeWrapper<'a> {
@@ -25,15 +26,42 @@ pub struct NodeWrapper<'a> {
 }
 // a Node has a mesh and a transform
 pub struct GNode<'a> {
-    children: RefCell<Vec<Rc<GNode<'a>>>>,
-    transform: [[f32; 4]; 4],
-    mesh: Option<GMesh<'a>>,
+    pub children: RefCell<Vec<Rc<GNode<'a>>>>,
+    pub transform: [[f32; 4]; 4],
+    pub mesh: Option<GMesh<'a>>,
 }
 impl<'a> GNode<'a> {
     fn add_child(self: &Rc<Self>, child: Rc<GNode<'a>>) {
         self.children.borrow_mut().push(child);
     }
 }
+
+pub struct ModelInstanceData {
+    vertices: Vec<u8>,
+    indices: Vec<u8>,
+    transforms: Vec<[[f32; 4]; 4]>,
+    vertex_offsets: Vec<usize>,
+    index_offsets: Vec<usize>,
+}
+
+impl ModelInstanceData {
+    fn new<'a>(node: &'a GNode) -> Self {
+        let vertices = Vec::<u8>::new();
+        let indices = Vec::<u8>::new();
+        let transforms = Vec::<[[f32; 4]; 4]>::new();
+        let vertex_offsets = Vec::<usize>::new();
+        let index_offsets = Vec::<usize>::new();
+        let mut model_data = ModelInstanceData {
+            vertices,
+            indices,
+            transforms,
+            vertex_offsets,
+            index_offsets,
+        };
+        model_data
+    }
+}
+
 pub struct GMesh<'a> {
     index_slice: &'a [u8],
     vertex_slice: &'a [u8],
@@ -51,11 +79,16 @@ impl<'a> GMesh<'a> {
             let indices_accessor = primitive.indices().ok_or(GltfErrors::NoIndices)?;
             let indices = Self::get_mesh_indices(buffer_data, &indices_accessor)?;
             let mut maybe_vertices: Option<&[u8]> = None;
+            let mut maybe_normals: Option<&[u8]> = None;
             for (semantic, accessor) in primitive.attributes() {
                 match semantic {
                     gltf::Semantic::Positions => {
                         let vertices_result = Self::get_mesh_vertices(buffer_data, &accessor)?;
                         let _ = maybe_vertices.insert(vertices_result);
+                    }
+                    gltf::Semantic::Normals => {
+                        let normals_results = Self::get_mesh_normals(buffer_data, &accessor)?;
+                        let _ = maybe_normals.insert(normals_results);
                     }
                     _ => {}
                 }
@@ -63,15 +96,39 @@ impl<'a> GMesh<'a> {
             let vertices = maybe_vertices.ok_or(GltfErrors::VericesError(String::from(
                 "could not get vertices from the accessor",
             )))?;
+            let normals = maybe_normals.ok_or(GltfErrors::NormalsError(String::from(
+                "could not get normal from accessor",
+            )))?;
             Ok(Some(Self {
                 index_slice: indices,
                 vertex_slice: vertices,
-                normal_slice: &[],
+                normal_slice: normals,
             }))
         } else {
             return Ok(None);
         }
     }
+    fn get_mesh_normals(
+        buffer_data: &'a Vec<u8>,
+        normals_accessor: &Accessor,
+    ) -> Result<&'a [u8], GltfErrors> {
+        if normals_accessor.data_type() != DataType::F32 {
+            return Err(GltfErrors::NormalsError(String::from(
+                "normal data type is somethings other than F32!",
+            )));
+        }
+        let normals_buffer_view = normals_accessor.view().ok_or(GltfErrors::NoView)?;
+        match normals_buffer_view.stride() {
+            Some(_) => todo!("havent implemented stride for bufferview"),
+            None => {
+                return Ok(Self::get_byte_data_from_view(
+                    buffer_data,
+                    &normals_buffer_view,
+                ));
+            }
+        }
+    }
+
     fn get_mesh_vertices(
         buffer_data: &'a Vec<u8>,
         position_accessor: &Accessor,
@@ -124,8 +181,8 @@ impl<'a> GMesh<'a> {
 // in order to draw itself, it traverses this tree
 // creating the required buffers
 pub struct GModel<'a> {
-    byte_data: Rc<Vec<u8>>,
-    node: Option<Rc<GNode<'a>>>,
+    pub byte_data: Rc<Vec<u8>>,
+    pub node: Option<Rc<GNode<'a>>>,
 }
 
 // used to gather the models

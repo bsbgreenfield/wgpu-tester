@@ -4,6 +4,8 @@ use std::ops::{self, Range};
 
 use crate::model::vertex::ModelVertex;
 
+use super::util::GModel;
+
 #[derive(Clone)]
 pub struct Mesh {
     pub vertex_buffer: wgpu::Buffer,
@@ -41,12 +43,18 @@ pub trait DrawModel<'a> {
     fn draw_mesh_instanced(&mut self, mesh: &'a Mesh, instances: Range<u32>);
     fn draw_model(&mut self, object: &'a Model);
     fn draw_model_instanced(&mut self, model: &'a Model, instances: Range<u32>);
+
+    fn draw_gmodel(&mut self, model: &'a GModel, instances: Range<u32>);
 }
 
 impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
+    fn draw_gmodel(&mut self, model: &'b GModel, instances: Range<u32>) {
+        if let Some(node) = &model.node {}
+    }
+
     fn draw_mesh(&mut self, mesh: &'b Mesh) {
         self.draw_mesh_instanced(mesh, 0..1);
     }
