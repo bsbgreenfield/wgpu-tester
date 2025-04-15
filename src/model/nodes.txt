@@ -1,0 +1,78 @@
+
+//fn get_node_meshes(node: Node) -> Result<Vec<Mesh>, GltfErrors> {
+//    let mut meshes = Vec::<Mesh>::new();
+//    if let Some(mesh) = node.mesh() {
+//        meshes.push(mesh);
+//    }
+//    for child_node in node.children() {
+//        let child_meshes = get_node_meshes(child_node)?;
+//        for mesh in &child_meshes {
+//            let indices: &[f32] = get_indices_slice(mesh)?;
+//        }
+//    }
+//
+//    Ok(meshes)
+//}
+//
+//fn get_indices_slice<'a>(mesh: &'a Mesh) -> Result<&'a [f32], GltfErrors> {
+//    // TODO: process more primitives?
+//    // use only the first primitive for now
+//    let primitive = mesh.primitives().next().unwrap();
+//
+//    // if there are no indices specified for this primitive, thats an error
+//    let indices_accessor: Accessor = primitive.indices().ok_or(GltfErrors::NoIndices)?;
+//    Ok(&[])
+//}
+
+//fn get_slice_from_accessor<'a>(accessor: &'a Accessor) -> Result<&'a [f32], gltf_errors> {
+//    let view = accessor.view().ok_or(gltf_errors::NoView)?;
+//    view.buffer().source()
+//}
+//fn get_nodes<'a>(
+//    nodes: gltf::iter::Nodes,
+//    root_nodes_ids: Vec<usize>,
+//    buffer_data: &'a Vec<u8>,
+//) -> Vec<Rc<GNode<'a>>> {
+//    let mut node_wrappers = Vec::<NodeWrapper>::with_capacity(nodes.len());
+//    let mut ret: Vec<Rc<GNode>> = Vec::with_capacity(root_nodes_ids.len());
+//    for node in nodes {
+//        let mesh = GMesh::new(&node.mesh(), &buffer_data);
+//        let transform = node.transform().matrix();
+//        let children: Vec<usize> = node.children().map(|c| c.index()).collect();
+//        // in this first pass process all node data besides the children to ensure that
+//        // everything actually exists before recursing.
+//        let node = GNode {
+//            mesh: mesh.unwrap(),
+//            transform,
+//            children: RefCell::new(Vec::with_capacity(children.len())),
+//        };
+//        // push a reference to the node to the g_nodes vec, along with the indices it will need
+//        node_wrappers.push(NodeWrapper {
+//            node_ref: Rc::new(node),
+//            child_indices: children,
+//        });
+//        // for each root node, loop through the children at the indices specified for this node
+//        // clone a new Rc from the Rc<child> node and add it to the children vec
+//    }
+//    for i in &root_nodes_ids {
+//        let root_node = &node_wrappers[*i].node_ref.clone();
+//        let child_indices = &node_wrappers[*i].child_indices;
+//        build_node(&node_wrappers, root_node, child_indices);
+//        ret.push(root_node.clone());
+//    }
+//    ret
+//}
+fn build_node<'a>(
+    g_nodes: &Vec<NodeWrapper<'a>>,
+    root_node: &Rc<GNode<'a>>,
+    child_indices: &Vec<usize>,
+) {
+    for child_id in child_indices {
+        let child_wrapper = &g_nodes[*child_id];
+        let child_child_indices = &child_wrapper.child_indices;
+        let child = child_wrapper.node_ref.clone();
+        build_node(g_nodes, &child, child_child_indices);
+        root_node.add_child(child);
+    }
+}
+

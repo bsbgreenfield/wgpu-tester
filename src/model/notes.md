@@ -50,9 +50,9 @@ struct GModel {
 }
 
 struct GMesh {
-    vertex_offset: usize, // the offet of the mesh within the vertex buffer
-    indices_offset: usize,
-    indices_length: usize // the number of indices in the mesh
+    vertex_offset: u32, // the offet of the mesh within the vertex buffer
+    indices_offset: u32,
+    indices_length: u32 // the number of indices in the mesh
 }
 ```
 then I can implement draw_mesh_instanced and draw_model_instanced for RenderPass
