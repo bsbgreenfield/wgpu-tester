@@ -1,13 +1,12 @@
 use super::app_config::AppConfig;
-use crate::constants::{INDICES, VERTICES};
-use crate::model::model::{ObjectTransform, ToRawMatrix};
-use crate::model::vertex::{ModelVertex, Vertex};
-use crate::scene::scene::{Scene, SceneDrawable, SceneScaffold};
+use crate::constants::*;
+use crate::model::model::*;
+use crate::model::vertex::*;
+use crate::scene::scene::*;
 use crate::util;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
 use winit::window::Window;
-
 pub struct InputController {
     pub key_d_down: bool,
     pub key_w_down: bool,
@@ -34,7 +33,7 @@ pub enum UpdateResult {
 }
 
 pub struct AppState<'a> {
-    app_config: AppConfig<'a>,
+    pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
     scene: Box<dyn SceneDrawable>,
     bind_groups: Vec<wgpu::BindGroup>,
