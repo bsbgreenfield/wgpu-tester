@@ -73,7 +73,7 @@ fn draw_model_instanced(&mut self, model: GModel) {
 ## important caveat to drawing meshes
 
 The above reasoning for drawing models is correct. However, I overlooked an important 
-aspect of drawing individial meshes. Namely, that a mesh may contain multiple primatives. 
+aspect of drawing individial meshes. Namely, that a mesh may contain multiple primitives. 
 
 Futhermore, these primitives may required different buffer layouts, lighting techniques, etc,
 which would require different *shaders*. For now, i will be ignoring this additional complexity 
@@ -88,10 +88,10 @@ The plan:
 - in the draw_mesh_instanced function, i will loop through the primitives of the mesh 
 and call render_pass.set_vertex_buffer() and render_pass.set_index_buffer() with a slice of the 
 larger buffers that corresponds to where the data actually lies for that primitive. 
-- It follows that i need a new struct "GPrimative", which will look like this:
+- It follows that i need a new struct "GPrimitive", which will look like this:
 
 ```rust
-struct GPrimative {
+struct GPrimitive {
     vertex_offset: u32, 
     vertex_len: u32,
     index_offset: u32,
@@ -105,11 +105,43 @@ and so draw_meshed_instanced will be something like
 ```rust
 
 fn draw_mesh_instanced(&mut self, mesh: GMesh, instances: usize, vertex_buffer: &wgpu::Buffer, index_buffer: &wgpu::Buffer,) {
-  for primiative in mesh.primatives {
+  for primitive in mesh.primitives {
         self.set_vertex_buffer(1, vertex_buffer.slice(primative.vertex_offset.. primative.vertex_offset + primitive.vertex_len) );
         self.set_index_buffer(1, vertex_buffer.slice(primative.index_offset.. primative.index_offset + primitive.index_len) );
         self.draw_indexed(vertex_buffer.slice(primative.index_offset.. primative.index_offset + primitive.index_len, 0, instances );
     } 
 }
 ```
+
+## local and global transformations
+
+When drawing meshes, we need to apply a transform to position each mesh correctly with respect to its local coordinate system as
+indicated by the transform matrix defined in the corresponding node. 
+
+Therefore, we need a local transform buffer that has one value per each mesh that we are drawing. 
+
+However, we arent "drawing" meshes, we are drawing primitives. 
+In the cesium milk truck exmpample:
+
+* draw mesh 0 
+    * draw primitive 0
+        * multiply each vertex by the transform at index 0 in local transform buffer
+* draw mesh 0 again
+    * draw primitive 0
+        * multiply each vertex by transform index 1
+
+* draw mesh 1
+    * draw primitive 0
+       * multiply each vertex by transform index 2
+    * draw pimitive 1
+        * multiply each vertex by transorm index 2
+    * draw primitive 2
+       * multiply each vertex by transform index 2
+
+so we need a way to communicate to the gpu that each instance of a primitive needs to correspond to the transform for the
+mesh of which it is a part.
+
+tldr: local transform buffer contains one value per mesh instance, each primitive in that mesh instance get multiplied by that value. 
+
+
 
