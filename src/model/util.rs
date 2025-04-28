@@ -1,11 +1,7 @@
-use crate::scene;
-
-use super::model2::SceneMeshData;
-use super::model2::{GMesh, GModel, GScene, SceneBufferData};
+use super::model2::GMesh;
 use super::vertex::ModelVertex;
-use cgmath::SquareMatrix;
+use crate::scene::scene2::*;
 use gltf::accessor::DataType;
-use gltf::json::mesh;
 use gltf::{Accessor, Gltf, Node};
 use std::fmt::Debug;
 use std::fs;
@@ -216,7 +212,11 @@ fn get_gltf_file(dir_path: PathBuf) -> Result<(PathBuf, PathBuf), std::io::Error
     }
 }
 
-pub fn load_gltf(dirname: &str, device: &wgpu::Device) -> Result<GScene, gltf::Error> {
+pub fn load_gltf(
+    dirname: &str,
+    device: &wgpu::Device,
+    aspect_ratio: f32,
+) -> Result<GScene, gltf::Error> {
     let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("res")
         .join(dirname);
@@ -231,7 +231,13 @@ pub fn load_gltf(dirname: &str, device: &wgpu::Device) -> Result<GScene, gltf::E
     let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
     let buffer_data_rc = Rc::new(buffer_data);
     let root_node_ids: Vec<usize> = scene.nodes().map(|n| n.index()).collect();
-    let scene = GScene::new(gltf.nodes(), root_node_ids, buffer_data_rc, device);
+    let scene = GScene::new(
+        gltf.nodes(),
+        root_node_ids,
+        buffer_data_rc,
+        device,
+        aspect_ratio,
+    );
     match scene {
         Ok(scene) => return Ok(scene),
         Err(_) => panic!(),

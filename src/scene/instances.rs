@@ -1,10 +1,10 @@
 use cgmath::Transform;
 use wgpu::util::DeviceExt;
 
-use crate::model::model::{ObjectTransform, ToRawMatrix};
+use crate::model::model2::{LocalTransform, ToRawMatrix};
 #[derive(Debug)]
 pub struct ObjectInstances {
-    pub transforms: Vec<ObjectTransform>,
+    pub transforms: Vec<LocalTransform>,
     pub num_instances: u32,
     pub offset_val: u32,
 }
@@ -56,7 +56,7 @@ impl InstanceData {
         &mut self,
         object_idx: usize,
         instance_indices: Vec<usize>,
-        new_instances: &mut Vec<ObjectTransform>,
+        new_instances: &mut Vec<LocalTransform>,
     ) {
         for (i, idx) in instance_indices.iter().enumerate() {
             // replace the instances at indices "idx" of object at index "object index"
@@ -85,7 +85,7 @@ impl InstanceData {
     }
 }
 impl ObjectInstances {
-    pub fn from_transforms(transforms: Vec<ObjectTransform>, offset_val: u32) -> Self {
+    pub fn from_transforms(transforms: Vec<LocalTransform>, offset_val: u32) -> Self {
         let num_instances = transforms.len() as u32;
         Self {
             transforms,

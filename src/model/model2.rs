@@ -1,16 +1,9 @@
-use std::ops::Range;
-use std::rc::Rc;
-
-use crate::model::util::find_meshes;
-use crate::scene::scene;
-
 use super::util::{get_meshes, get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use super::vertex::ModelVertex;
-use cgmath::{Matrix4, SquareMatrix};
-use gltf::accessor::DataType;
+use crate::scene::scene2::*;
 use gltf::{Accessor, Mesh, Node, Primitive, Scene};
-use wgpu::util::DeviceExt;
-use wgpu::BufferSlice;
+use std::ops::{self, Range};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy)]
 struct GPrimitive {
@@ -86,113 +79,6 @@ pub struct GModel {
     pub mesh_instances: Vec<u32>,
 }
 
-pub struct SceneBufferData {
-    main_buffer_data: Rc<Vec<u8>>,
-    vertex_buf: Vec<ModelVertex>,
-    index_buf: Vec<u16>,
-}
-impl SceneBufferData {
-    fn new(main_buffer_data: Rc<Vec<u8>>) -> Self {
-        Self {
-            main_buffer_data,
-            vertex_buf: Vec::new(),
-            index_buf: Vec::new(),
-        }
-    }
-}
-
-pub struct SceneMeshData {
-    pub mesh_ids: Vec<u32>,
-    pub mesh_instances: Vec<u32>,
-    pub transformation_matrices: Vec<[[f32; 4]; 4]>,
-}
-impl SceneMeshData {
-    fn new() -> Self {
-        Self {
-            mesh_ids: Vec::new(),
-            mesh_instances: Vec::new(),
-            transformation_matrices: Vec::new(),
-        }
-    }
-}
-pub struct GScene {
-    pub models: Vec<GModel>,
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-    pub local_transformation_buffer: wgpu::Buffer,
-}
-
-impl GScene {
-    pub fn new<'a>(
-        nodes: gltf::iter::Nodes<'a>,
-        root_nodes_ids: Vec<usize>,
-        buffer_data: Rc<Vec<u8>>,
-        device: &wgpu::Device,
-    ) -> Result<Self, GltfErrors> {
-        let nodes: Vec<_> = nodes.collect();
-        let mut models = Vec::with_capacity(root_nodes_ids.len());
-        let mut scene_buffer_data: SceneBufferData = SceneBufferData::new(buffer_data.clone());
-        let mut scene_mesh_data = SceneMeshData::new();
-
-        for id in root_nodes_ids.iter() {
-            // get a ref to the root node
-
-            let root_node: &Node<'a> = &nodes[*id];
-
-            // find mesh id's and instances associated with this root node
-            scene_mesh_data = find_meshes(
-                root_node,
-                scene_mesh_data,
-                cgmath::Matrix4::identity().into(),
-            );
-            assert_eq!(
-                scene_mesh_data.mesh_ids.len(),
-                scene_mesh_data.mesh_instances.len()
-            );
-
-            // given the meshes that are included in this model, generate GMeshes
-            // this also appends the vertex and index buffer with the data for these meshes
-            let meshes: Vec<GMesh> =
-                get_meshes(&scene_mesh_data.mesh_ids, &nodes, &mut scene_buffer_data)?;
-
-            models.push(GModel {
-                byte_data: buffer_data.clone(),
-                meshes,
-                mesh_instances: scene_mesh_data.mesh_instances.clone(),
-            });
-        }
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Vertex Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.vertex_buf),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Index Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.index_buf),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let local_transformation_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Local transform buffer"),
-                contents: bytemuck::cast_slice(&scene_mesh_data.transformation_matrices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        //   println!("transformations: ");
-        //   for t in scene_mesh_data.transformation_matrices.iter() {
-        //       println!("{:?}", t);
-        //   }
-
-        Ok(Self {
-            models,
-            vertex_buffer,
-            index_buffer,
-            local_transformation_buffer,
-        })
-    }
-}
-
 pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
     fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, scene: &GScene, instances: Range<u32>);
@@ -224,5 +110,92 @@ where
         for (idx, mesh) in model.meshes.iter().enumerate() {
             self.draw_gmesh_instanced(&mesh, scene, 0..model.mesh_instances[idx]);
         }
+    }
+}
+pub trait ToRawMatrix {
+    fn as_raw_matrix(&self) -> [[f32; 4]; 4];
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LocalTransform {
+    pub transform_matrix: cgmath::Matrix4<f32>,
+}
+impl ops::Mul<LocalTransform> for LocalTransform {
+    type Output = LocalTransform;
+    fn mul(self, rhs: LocalTransform) -> Self::Output {
+        LocalTransform {
+            transform_matrix: self.transform_matrix * rhs.transform_matrix,
+        }
+    }
+}
+
+impl LocalTransform {
+    pub const fn raw_matrix_from_vectors(
+        x_vector: [f32; 4],
+        y_vector: [f32; 4],
+        z_vector: [f32; 4],
+        w_vector: [f32; 4],
+    ) -> [[f32; 4]; 4] {
+        [x_vector, y_vector, z_vector, w_vector]
+    }
+
+    pub fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> Self {
+        Self {
+            transform_matrix: matrix.into(),
+        }
+    }
+
+    pub const fn identity() -> [[f32; 4]; 4] {
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    }
+    pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 5,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
+                    shader_location: 6,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+impl ToRawMatrix for LocalTransform {
+    fn as_raw_matrix(&self) -> [[f32; 4]; 4] {
+        self.transform_matrix.into()
+    }
+}
+
+pub struct GlobalTransform {
+    pub transform_matrix: cgmath::Matrix4<f32>,
+}
+impl ops::Mul<[[f32; 4]; 4]> for GlobalTransform {
+    type Output = [[f32; 4]; 4];
+    fn mul(self, rhs: [[f32; 4]; 4]) -> Self::Output {
+        let a = self.transform_matrix * cgmath::Matrix4::<f32>::from(rhs);
+        a.into()
     }
 }

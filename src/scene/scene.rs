@@ -1,7 +1,8 @@
 use super::{camera::*, instances::*};
+use crate::model::model2::LocalTransform;
 use crate::{
     model::{
-        model::{DrawModel, Model, ObjectTransform},
+        model::{DrawModel, Model},
         vertex::ModelVertex,
     },
     util::create_models,
@@ -29,7 +30,7 @@ pub trait SceneDrawable {
         &mut self,
         object_idx: usize,
         instance_indices: Vec<usize>,
-        new_instances: &mut Vec<ObjectTransform>,
+        new_instances: &mut Vec<LocalTransform>,
     ) -> Option<Vec<[[f32; 4]; 4]>>;
     fn add_models(&mut self, models: Vec<Model>);
     fn add_instances(&mut self, instance_data: InstanceData);
@@ -129,7 +130,7 @@ impl SceneDrawable for Scene {
         &mut self,
         object_idx: usize,
         instance_indices: Vec<usize>,
-        new_instances: &mut Vec<ObjectTransform>,
+        new_instances: &mut Vec<LocalTransform>,
     ) -> Option<Vec<[[f32; 4]; 4]>> {
         if let Some(instance_data) = self.instance_data.as_mut() {
             instance_data.update_object_instances(object_idx, instance_indices, new_instances);
@@ -170,7 +171,7 @@ use std::collections::HashMap;
 
 pub struct SceneScaffold {
     models: Vec<Model>,
-    instances_per_object: HashMap<u32, Vec<ObjectTransform>>,
+    instances_per_object: HashMap<u32, Vec<LocalTransform>>,
 }
 
 impl SceneScaffold {
@@ -192,7 +193,7 @@ impl SceneScaffold {
         }
     }
 
-    pub fn add_instances(&mut self, object_index: u32, transforms: Vec<ObjectTransform>) {
+    pub fn add_instances(&mut self, object_index: u32, transforms: Vec<LocalTransform>) {
         self.instances_per_object.insert(object_index, transforms);
     }
 }
