@@ -1,6 +1,8 @@
 use super::app_config::AppConfig;
 use crate::constants::*;
 use crate::model::model::*;
+use crate::model::model2::{GDrawModel, GScene};
+use crate::model::util::load_gltf;
 use crate::model::vertex::*;
 use crate::scene::scene::*;
 use crate::util;
@@ -36,6 +38,7 @@ pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
     scene: Box<dyn SceneDrawable>,
+    gscene: GScene,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
 }
@@ -119,10 +122,12 @@ impl<'a> AppState<'a> {
                     },
                 });
 
+        let gscene = load_gltf("milk-truck", &app_config.device).unwrap();
         Self {
             app_config,
             render_pipeline,
             scene: Box::new(scene),
+            gscene,
             bind_groups,
             input_controller: InputController::new(),
         }
@@ -234,8 +239,12 @@ impl<'a> AppState<'a> {
             }
 
             render_pass.set_pipeline(&self.render_pipeline);
-            if self.scene.draw_scene(&mut render_pass).is_err() {
-                panic!("error");
+            //if self.scene.draw_scene(&mut render_pass).is_err() {
+            //    panic!("error");
+            //}
+            render_pass.set_vertex_buffer(1, self.gscene.local_transformation_buffer.slice(..));
+            for model in self.gscene.models.iter() {
+                render_pass.draw_gmodel(model, &self.gscene);
             }
         }
         self.app_config

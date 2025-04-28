@@ -71,10 +71,6 @@ impl ApplicationHandler for App<'_> {
             let app_state = pollster::block_on(AppState::new(window.clone()));
             self.app_state = Some(app_state);
             self.window = Some(window.clone());
-            load_gltf(
-                "milk-truck",
-                &self.app_state.as_ref().unwrap().app_config.device,
-            );
             window.request_redraw();
         }
     }

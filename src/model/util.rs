@@ -1,8 +1,11 @@
+use crate::scene;
+
 use super::model2::SceneMeshData;
 use super::model2::{GMesh, GModel, GScene, SceneBufferData};
 use super::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::accessor::DataType;
+use gltf::json::mesh;
 use gltf::{Accessor, Gltf, Node};
 use std::fmt::Debug;
 use std::fs;
@@ -60,17 +63,21 @@ pub fn find_meshes(
 }
 
 pub fn get_meshes(
-    nodes: gltf::iter::Nodes,
+    mesh_ids: &Vec<u32>,
+    nodes: &Vec<Node>,
     scene_buffer_data: &mut SceneBufferData,
 ) -> Result<Vec<GMesh>, GltfErrors> {
     let mut meshes = Vec::<GMesh>::new();
-    for node in nodes {
-        if let Some(mesh) = node.mesh() {
-            if !has_mesh(&meshes, mesh.index() as u32) {
-                let g_mesh = GMesh::new(&mesh, scene_buffer_data)?;
-                meshes.push(g_mesh);
-            }
-        }
+    println!("this is the meshes passed into get meshes {:?}", mesh_ids);
+    for mesh_id in mesh_ids.iter() {
+        let mesh = nodes
+            .iter()
+            .find(|n| n.mesh().is_some() && n.mesh().unwrap().index() as u32 == *mesh_id)
+            .unwrap()
+            .mesh()
+            .unwrap();
+        let g_mesh = GMesh::new(&mesh, scene_buffer_data)?;
+        meshes.push(g_mesh);
     }
     Ok(meshes)
 }
@@ -95,12 +102,24 @@ pub fn get_primitive_index_data(
         )));
     }
     let indices_buffer_view = indices_accessor.view().ok_or(GltfErrors::NoView)?;
-    let indices_bytes = &byte_data
-        [indices_buffer_view.offset()..indices_buffer_view.length() + indices_buffer_view.offset()];
+    let indices_bytes = &byte_data[indices_buffer_view.offset()
+        ..(indices_buffer_view.length() + indices_buffer_view.offset())];
 
-    let indices_u16 = bytemuck::cast_slice(indices_bytes);
-    let primitive_indices_offset = index_data.len();
+    // get a [u16] slice from the u8 data
+    let indices_u16 = bytemuck::cast_slice::<u8, u16>(indices_bytes);
+
+    // the offset within our composed index buffer is equal to the current length of
+    // of the buffer (of u16s) * 2 (2 bytes per u16 element);
+    // however, we are NOT multiplying indices len by 2, becuase we acutally need that number
+    // as is for render_pass.draw_indexed.
+    let primitive_indices_offset = index_data.len() * 2;
     let primitive_indices_len = indices_u16.len();
+
+    println!(
+        "this primitive has slice {} to {}",
+        primitive_indices_offset as u32,
+        (primitive_indices_offset as u32 + primitive_indices_len as u32)
+    );
 
     index_data.extend(indices_u16);
 
@@ -117,7 +136,7 @@ pub fn get_primitive_vertex_data(
     normals_accessor: &Accessor,
     vertex_data: &mut Vec<ModelVertex>,
     byte_data: &Rc<Vec<u8>>,
-) -> Result<u32, GltfErrors> {
+) -> Result<(u32, u32), GltfErrors> {
     if position_accessor.data_type() != DataType::F32
         && normals_accessor.data_type() != DataType::F32
     {
@@ -145,11 +164,16 @@ pub fn get_primitive_vertex_data(
         })
         .collect();
 
-    let vertex_offset = vertex_data.len() as u32;
+    // the offset for the composed vertex buffer is equal to the length of the elements in the
+    // ModelVertex vec * 24. This is because each ModelVertex is 24 bytes long.
+    // similarly, the length of the slice is the length of the f32 slice * 4, because an f32 is 4
+    // bytes long.
+    let vertex_offset = (vertex_data.len() as u32) * 24;
+    let vertex_len = (position_f32.len() * 4) + (normals_f32.len() * 4);
 
     vertex_data.extend(vertex_vec);
 
-    Ok(vertex_offset)
+    Ok((vertex_offset, vertex_len as u32))
 }
 /// get exactly one gltf file and one bin file from the provided directory
 /// TODO: make these errors more usefull
@@ -192,7 +216,7 @@ fn get_gltf_file(dir_path: PathBuf) -> Result<(PathBuf, PathBuf), std::io::Error
     }
 }
 
-pub fn load_gltf(dirname: &str, device: &wgpu::Device) -> Result<Vec<GModel>, gltf::Error> {
+pub fn load_gltf(dirname: &str, device: &wgpu::Device) -> Result<GScene, gltf::Error> {
     let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("res")
         .join(dirname);
@@ -209,8 +233,7 @@ pub fn load_gltf(dirname: &str, device: &wgpu::Device) -> Result<Vec<GModel>, gl
     let root_node_ids: Vec<usize> = scene.nodes().map(|n| n.index()).collect();
     let scene = GScene::new(gltf.nodes(), root_node_ids, buffer_data_rc, device);
     match scene {
-        Ok(_) => println!("success"),
-        Err(e) => println!("{:?}", e),
+        Ok(scene) => return Ok(scene),
+        Err(_) => panic!(),
     }
-    Ok(vec![])
 }
