@@ -1,7 +1,9 @@
 use super::model2::GMesh;
 use super::vertex::ModelVertex;
+use crate::scene::camera::OPENGL_TO_WGPU_MATRIX;
 use crate::scene::scene2::*;
 use gltf::accessor::DataType;
+use gltf::buffer::View;
 use gltf::{Accessor, Gltf, Node};
 use std::fmt::Debug;
 use std::fs;
@@ -33,6 +35,11 @@ pub fn find_meshes(
         let cg_base = cgmath::Matrix4::<f32>::from(base_translation);
         let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
         base_translation = (cg_base * cg_trans).into();
+        //for a in base_translation.iter_mut() {
+        //    for b in a.iter_mut() {
+        //        *b = (*b * 10000.0).round() / 10000.0;
+        //    }
+        //}
         if let Some(mesh) = root_node.mesh() {
             // this is an instance of a mesh. Push the current base translation
             scene_mesh_data
@@ -64,8 +71,8 @@ pub fn get_meshes(
     scene_buffer_data: &mut SceneBufferData,
 ) -> Result<Vec<GMesh>, GltfErrors> {
     let mut meshes = Vec::<GMesh>::new();
-    println!("this is the meshes passed into get meshes {:?}", mesh_ids);
     for mesh_id in mesh_ids.iter() {
+        // cursed?
         let mesh = nodes
             .iter()
             .find(|n| n.mesh().is_some() && n.mesh().unwrap().index() as u32 == *mesh_id)
@@ -111,12 +118,6 @@ pub fn get_primitive_index_data(
     let primitive_indices_offset = index_data.len() * 2;
     let primitive_indices_len = indices_u16.len();
 
-    println!(
-        "this primitive has slice {} to {}",
-        primitive_indices_offset as u32,
-        (primitive_indices_offset as u32 + primitive_indices_len as u32)
-    );
-
     index_data.extend(indices_u16);
 
     Ok((
@@ -124,6 +125,28 @@ pub fn get_primitive_index_data(
         primitive_indices_len as u32,
     ))
 }
+
+fn get_bytes_from_view(
+    view: &View,
+    count: usize,
+    size: usize,
+    initial_offset: usize,
+    byte_data: &Rc<Vec<u8>>,
+) -> Vec<u8> {
+    let mut bytes = Vec::<u8>::new();
+    let mut offset = initial_offset + view.offset();
+    if let Some(stride_len) = view.stride() {
+        for _ in 0..count {
+            bytes.extend(&byte_data[offset..offset + size]);
+            offset += stride_len;
+        }
+    } else {
+        bytes = byte_data[offset..view.length() + offset].to_vec();
+    }
+
+    bytes
+}
+
 /// *THIS FUNCTIONS MUTATES DATA*
 /// expand the ModelVertex buffer to include the bytes specified by this primitive
 /// by composing ModelVertex structs from bufferview data on the positions and normals
@@ -143,10 +166,20 @@ pub fn get_primitive_vertex_data(
     let position_buffer_view = position_accessor.view().ok_or(GltfErrors::NoView)?;
     let normals_buffer_view = position_accessor.view().ok_or(GltfErrors::NoView)?;
 
-    let position_bytes = &byte_data[position_buffer_view.offset()
-        ..position_buffer_view.length() + position_buffer_view.offset()];
-    let normal_bytes = &byte_data
-        [normals_buffer_view.offset()..normals_buffer_view.length() + normals_buffer_view.offset()];
+    let position_bytes = &get_bytes_from_view(
+        &position_buffer_view,
+        position_accessor.count(),
+        12, // vec3<f32>
+        position_accessor.offset(),
+        byte_data,
+    );
+    let normal_bytes = &get_bytes_from_view(
+        &normals_buffer_view,
+        normals_accessor.count(),
+        12, // vec3<f32>
+        normals_accessor.offset(),
+        byte_data,
+    );
 
     let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
     let normals_f32: &[f32] = bytemuck::cast_slice(normal_bytes);

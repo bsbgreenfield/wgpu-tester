@@ -39,6 +39,44 @@ impl SceneMeshData {
         }
     }
 }
+
+fn cg(mut m: [[f32; 4]; 4]) -> cgmath::Matrix4<f32> {
+    for a in m.iter_mut() {
+        for b in a.iter_mut() {
+            *b = (*b * 100000.0).round() / 100000.0;
+        }
+    }
+    cgmath::Matrix4::<f32>::from(m)
+}
+fn test(nodes: Vec<Node>) {
+    let rn = nodes
+        .iter()
+        .find(|n| n.index() == 5)
+        .unwrap()
+        .transform()
+        .matrix();
+    let four = nodes
+        .iter()
+        .find(|n| n.index() == 4)
+        .unwrap()
+        .transform()
+        .matrix();
+    let three = nodes
+        .iter()
+        .find(|n| n.index() == 3)
+        .unwrap()
+        .transform()
+        .matrix();
+    let wheel2 = nodes
+        .iter()
+        .find(|n| n.index() == 2)
+        .unwrap()
+        .transform()
+        .matrix();
+
+    let m = cg(rn) * cg(four) * cg(three) * cg(wheel2);
+    println!("{:?}", m);
+}
 pub struct GScene {
     pub models: Vec<GModel>,
     pub vertex_buffer: wgpu::Buffer,
@@ -86,6 +124,15 @@ impl GScene {
                 meshes,
                 mesh_instances: scene_mesh_data.mesh_instances.clone(),
             });
+
+            for model in models.iter() {
+                print!("Meshes: ");
+                for mesh in model.meshes.iter() {
+                    print!("{:?}, ", mesh.index);
+                }
+                println!();
+                println!("instances {:?}", model.mesh_instances);
+            }
         }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

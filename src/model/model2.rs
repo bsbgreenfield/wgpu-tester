@@ -1,3 +1,4 @@
+use super::model;
 use super::util::{get_meshes, get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use super::vertex::ModelVertex;
 use crate::scene::scene2::*;
@@ -63,7 +64,8 @@ impl GMesh {
         for primitive in mesh.primitives() {
             // loop through the primitives and build out the vertex buffer and index buffer
             // side effects!! I know!!! Im sorry!!
-            g_primitives.push(GPrimitive::new(primitive, scene_buffer_data)?);
+            let p = GPrimitive::new(primitive, scene_buffer_data)?;
+            g_primitives.push(p);
         }
 
         Ok(Self {
@@ -107,8 +109,10 @@ where
         }
     }
     fn draw_gmodel(&mut self, model: &'b GModel, scene: &GScene) {
+        let mut offset: u32 = 0;
         for (idx, mesh) in model.meshes.iter().enumerate() {
-            self.draw_gmesh_instanced(&mesh, scene, 0..model.mesh_instances[idx]);
+            self.draw_gmesh_instanced(&mesh, scene, offset..offset + model.mesh_instances[idx]);
+            offset += model.mesh_instances[idx];
         }
     }
 }

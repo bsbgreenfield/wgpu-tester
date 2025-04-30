@@ -144,4 +144,9 @@ mesh of which it is a part.
 tldr: local transform buffer contains one value per mesh instance, each primitive in that mesh instance get multiplied by that value. 
 
 
+# local transform bug
+- for the cesium milk truck we are looping through two meshes and calling self.draw_gmesh_instaced on each
+- each mesh is drawn with a separate draw call to each of its primitives.
 
+the bug was that i wasnt passing in the correct range to the transforms. The instances range needs to correspond to the
+indices within the local transform buffer, not just 0 to the number of instances.
