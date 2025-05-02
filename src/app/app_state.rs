@@ -1,7 +1,7 @@
 use super::app_config::AppConfig;
 use crate::constants::*;
 use crate::model::model::*;
-use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform};
+use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform, ModelIndex};
 use crate::model::util::load_gltf;
 use crate::model::vertex::*;
 use crate::scene::scene::*;
@@ -9,6 +9,7 @@ use crate::scene::scene2::GScene;
 use crate::util;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
+use wgpu::util::DeviceExt;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 pub struct InputController {
@@ -55,7 +56,7 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
+        let gscene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
         let (camera_bind_group_layout, camera_bind_group) =
             crate::scene::camera::get_camera_bind_group(
                 gscene.get_camera_buf(),
@@ -89,7 +90,39 @@ impl<'a> AppState<'a> {
                     label: Some("Global bind group"),
                 });
 
-        let bind_groups = vec![camera_bind_group, global_instance_bind_group];
+        let model_index_bind_group_layout =
+            app_config
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("model index bind group layout"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+        let model_index_bind_group =
+            app_config
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &model_index_bind_group_layout,
+                    label: Some("model index bind group"),
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: gscene.instance_data.model_index_buffer.as_entire_binding(),
+                    }],
+                });
+
+        let bind_groups = vec![
+            camera_bind_group,
+            global_instance_bind_group,
+            model_index_bind_group,
+        ];
 
         let render_pipeline_layout =
             app_config
@@ -99,6 +132,7 @@ impl<'a> AppState<'a> {
                     bind_group_layouts: &[
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
+                        &model_index_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -207,14 +241,7 @@ impl<'a> AppState<'a> {
 
     pub fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.2));
-        //// update instance data field
-        //// re process instance data into new Vec<[]>
-        //// write buffer with data
-        //let new_transforms = &mut vec![ObjectTransform {
-        //    transform_matrix: rot,
-        //}];
-        //
+        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
         let new_t = GlobalTransform {
             transform_matrix: rot.into(),
         };
@@ -226,19 +253,6 @@ impl<'a> AppState<'a> {
             0,
             bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
         );
-        //match self.scene.get_instances_mut() {
-        //    Some(instance_data) => {
-        //        instance_data.update_object_instances(0, vec![0], new_transforms);
-        //        let data = instance_data.get_raw_data();
-        //        self.app_config.queue.write_buffer(
-        //            instance_data.get_buffer(),
-        //            0,
-        //            bytemuck::cast_slice(&data),
-        //        );
-        //        Ok(())
-        //    }
-        //    None => Err(UpdateResult::UpdateError),
-        //}
         Ok(())
     }
 
@@ -288,9 +302,7 @@ impl<'a> AppState<'a> {
                 1,
                 self.gscene.instance_data.local_transform_buffer.slice(..),
             );
-            for model in self.gscene.models.iter() {
-                render_pass.draw_gmodel(model, &self.gscene);
-            }
+            render_pass.draw_scene(&self.gscene);
         }
         self.app_config
             .queue

@@ -1,7 +1,7 @@
 use super::model;
 use super::util::{get_meshes, get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use super::vertex::ModelVertex;
-use crate::scene::scene2::*;
+use crate::scene::{scene, scene2::*};
 use gltf::{Accessor, Mesh, Node, Primitive, Scene};
 use std::ops::{self, Range};
 use std::rc::Rc;
@@ -85,6 +85,7 @@ pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
     fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, scene: &GScene, instances: Range<u32>);
     fn draw_gmodel(&mut self, model: &'a GModel, scene: &GScene);
+    fn draw_scene(&mut self, scene: &'a GScene);
 }
 
 impl<'a, 'b> GDrawModel<'b> for wgpu::RenderPass<'a>
@@ -113,6 +114,12 @@ where
         for (idx, mesh) in model.meshes.iter().enumerate() {
             self.draw_gmesh_instanced(&mesh, scene, offset..offset + model.mesh_instances[idx]);
             offset += model.mesh_instances[idx];
+        }
+    }
+
+    fn draw_scene(&mut self, scene: &'b GScene) {
+        for model in scene.models.iter() {
+            self.draw_gmodel(model, scene);
         }
     }
 }
@@ -202,4 +209,24 @@ impl ops::Mul<[[f32; 4]; 4]> for GlobalTransform {
         let a = self.transform_matrix * cgmath::Matrix4::<f32>::from(rhs);
         a.into()
     }
+}
+
+pub struct ModelIndex {
+    pub idx: u32,
+}
+
+impl ModelIndex {
+    //pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+    //    use std::mem;
+    //    wgpu::VertexBufferLayout {
+    //        array_stride: mem::size_of::<u32>() as wgpu::BufferAddress,
+    //        step_mode: wgpu::VertexStepMode::Vertex,
+
+    //        attributes: &[wgpu::VertexAttribute {
+    //            offset: 0,
+    //            shader_location: 7,
+    //            format: wgpu::VertexFormat::Uint32,
+    //        }],
+    //    }
+    //}
 }

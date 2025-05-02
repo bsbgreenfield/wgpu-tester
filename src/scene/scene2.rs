@@ -124,15 +124,6 @@ impl GScene {
                 meshes,
                 mesh_instances: scene_mesh_data.mesh_instances.clone(),
             });
-
-            for model in models.iter() {
-                print!("Meshes: ");
-                for mesh in model.meshes.iter() {
-                    print!("{:?}, ", mesh.index);
-                }
-                println!();
-                println!("instances {:?}", model.mesh_instances);
-            }
         }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -159,8 +150,11 @@ impl GScene {
         //       println!("{:?}", t);
         //   }
 
-        let global_transform_data: Vec<[[f32; 4]; 4]> =
-            vec![cgmath::Matrix4::<f32>::identity().into()];
+        let offset_x: [[f32; 4]; 4] =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(0.8, 0.5, 0.0))
+                .into();
+        let identity: [[f32; 4]; 4] = cgmath::Matrix4::<f32>::identity().into();
+        let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity];
         let instance_data =
             InstanceData2::new(local_transformation_buffer, global_transform_data, device);
 

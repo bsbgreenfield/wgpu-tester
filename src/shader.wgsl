@@ -1,7 +1,6 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
-  @builtin(vertex_index) index: u32,
 }
 
 struct InstanceInput {
@@ -11,9 +10,13 @@ struct InstanceInput {
   @location(6) obj_matrix_3: vec4<f32>,
 }
 
+
 struct GlobalTransforms{
 	transforms: array<mat4x4<f32>>,
 }
+struct ModelIndex {
+	 index: u32,
+} 
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
   @location(0) color: vec3<f32>,
@@ -29,6 +32,8 @@ var<uniform> camera_uniform: CameraUniform;
 @group(1) @binding(1)
 var<storage, read> global_transforms: GlobalTransforms;
 
+@group(2) @binding(2)
+var<uniform> model_index: ModelIndex;
 
 @vertex
 fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -47,7 +52,7 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
     return out;
 }
 
-@ fragment
-fn fs_main(in: VertexOutput) -> @ location(0) vec4<f32> {
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color, 1.0);
 }
