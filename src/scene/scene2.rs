@@ -3,6 +3,7 @@ use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
+use gltf::Scene;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
@@ -79,8 +80,8 @@ fn test(nodes: Vec<Node>) {
 }
 pub struct GScene {
     pub models: Vec<GModel>,
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
+    pub vertex_data: VertexData,
+    pub index_data: IndexData,
     pub camera: Camera,
     pub instance_data: InstanceData2,
 }
@@ -126,17 +127,7 @@ impl GScene {
             });
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Vertex Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.vertex_buf),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Index Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.index_buf),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
+        let (vertex_data, index_data) = Self::init_data(scene_buffer_data);
         let local_transformation_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Local transform buffer"),
@@ -161,10 +152,52 @@ impl GScene {
         Ok(Self {
             models,
             camera,
-            vertex_buffer,
-            index_buffer,
+            vertex_data,
+            index_data,
             instance_data,
         })
+    }
+
+    fn init_data(scene_buffer_data: SceneBufferData) -> (VertexData, IndexData) {
+        let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
+        let index_data = IndexData::from_data(scene_buffer_data.index_buf);
+        (vertex_data, index_data)
+    }
+
+    pub fn merge(scenes: Vec<GScene>) -> GScene {
+        let mut models: Vec<GModel> = Vec::new();
+        let mut vertex_data: VertexData = VertexData::from_data(Vec::new());
+        let mut index_data: IndexData = IndexData::from_data(Vec::new());
+        let camera = scenes[0].camera;
+        let instance_data = scenes[0].instance_data;
+        for scene in scenes {
+            models.extend(scene.models);
+            vertex_data.vertices.extend(scene.vertex_data.vertices);
+            index_data.indices.extend(scene.index_data.indices);
+        }
+        GScene {
+            models,
+            vertex_data,
+            index_data,
+            camera,
+            instance_data,
+        }
+    }
+
+    pub fn init(&mut self, device: &wgpu::Device) {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Vertex Buffer"),
+            contents: bytemuck::cast_slice(&self.vertex_data.vertices),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Index Buffer"),
+            contents: bytemuck::cast_slice(&self.index_data.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        self.vertex_data.vertex_buffer.insert(vertex_buffer);
+        self.index_data.index_buffer.insert(index_buffer);
     }
 
     pub fn get_camera_buf(&self) -> &wgpu::Buffer {
@@ -174,13 +207,47 @@ impl GScene {
     pub fn get_global_buf(&self) -> &wgpu::Buffer {
         &self.instance_data.global_transform_buffer
     }
+
     pub fn get_camera_uniform_data(&self) -> [[f32; 4]; 4] {
         self.camera.camera_uniform.view_proj
     }
+
     pub fn update_camera_pos(&mut self, x: f32, y: f32, z: f32) {
         self.camera.update_position(cgmath::point3(x, y, z));
     }
+
     pub fn get_speed(&self) -> f32 {
         return self.camera.speed;
+    }
+}
+
+trait SceneData<T> {
+    fn from_data(data: T) -> Self;
+}
+
+struct VertexData {
+    vertices: Vec<ModelVertex>,
+    vertex_buffer: Option<wgpu::Buffer>,
+}
+struct IndexData {
+    indices: Vec<u16>,
+    index_buffer: Option<wgpu::Buffer>,
+}
+
+impl SceneData<Vec<ModelVertex>> for VertexData {
+    fn from_data(data: Vec<ModelVertex>) -> Self {
+        VertexData {
+            vertices: data,
+            vertex_buffer: None,
+        }
+    }
+}
+
+impl SceneData<Vec<u16>> for IndexData {
+    fn from_data(data: Vec<u16>) -> Self {
+        IndexData {
+            indices: data,
+            index_buffer: None,
+        }
     }
 }
