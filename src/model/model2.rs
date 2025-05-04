@@ -1,8 +1,7 @@
-use super::model;
-use super::util::{get_meshes, get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
-use super::vertex::ModelVertex;
-use crate::scene::{scene, scene2::*};
-use gltf::{Accessor, Mesh, Node, Primitive, Scene};
+use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
+use crate::scene::scene2::GScene;
+use crate::scene::scene2::SceneBufferData;
+use gltf::{Mesh, Primitive};
 use std::ops::{self, Range};
 use std::rc::Rc;
 
