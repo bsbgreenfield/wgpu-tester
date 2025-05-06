@@ -4,7 +4,6 @@ use crate::model::model2::GlobalTransform;
 pub struct InstanceData2 {
     pub local_transform_buffer: wgpu::Buffer,
     pub global_transform_buffer: wgpu::Buffer,
-    pub model_index_buffer: wgpu::Buffer,
     pub global_transform_data: Vec<[[f32; 4]; 4]>,
 }
 
@@ -21,16 +20,10 @@ impl InstanceData2 {
                 label: Some("global instance buffer"),
             });
 
-        let model_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            contents: &[0],
-            label: Some("Model index buffer"),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
         Self {
             local_transform_buffer,
             global_transform_buffer,
             global_transform_data,
-            model_index_buffer,
         }
     }
     pub fn update_global_transform_x(

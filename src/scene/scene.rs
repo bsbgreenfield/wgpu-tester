@@ -133,7 +133,7 @@ impl SceneDrawable for Scene {
         new_instances: &mut Vec<LocalTransform>,
     ) -> Option<Vec<[[f32; 4]; 4]>> {
         if let Some(instance_data) = self.instance_data.as_mut() {
-            instance_data.update_object_instances(object_idx, instance_indices, new_instances);
+            //            instance_data.update_object_instances(object_idx, instance_indices, new_instances);
             Some(instance_data.get_raw_data())
         } else {
             None

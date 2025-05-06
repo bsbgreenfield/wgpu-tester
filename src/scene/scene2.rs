@@ -28,7 +28,7 @@ impl SceneBufferData {
 pub struct SceneMeshData {
     pub mesh_ids: Vec<u32>,
     pub mesh_instances: Vec<u32>,
-    pub transformation_matrices: Vec<[[f32; 4]; 4]>,
+    pub transformation_matrices: Vec<LocalTransform>,
 }
 impl SceneMeshData {
     fn new() -> Self {
@@ -154,7 +154,7 @@ impl GScene {
             cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(0.8, 0.5, 0.0))
                 .into();
         let identity: [[f32; 4]; 4] = cgmath::Matrix4::<f32>::identity().into();
-        let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity];
+        let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity, offset_x];
         let instance_data =
             InstanceData2::new(local_transformation_buffer, global_transform_data, device);
 
@@ -165,6 +165,13 @@ impl GScene {
             index_buffer,
             instance_data,
         })
+    }
+
+    /// add an instance of an existing model to the scene. The number of instances corresponds to
+    /// the size of the global transform vec
+    /// [model_idx] : index of the model in the scenes models vec
+    /// [global_transforms] global transform to apply to this instance
+    pub fn add_model_instances(&mut self, model_idx: usize, global_transforms: Vec<[[f32; 4]; 4]>) {
     }
 
     pub fn get_camera_buf(&self) -> &wgpu::Buffer {

@@ -1,7 +1,6 @@
 use super::app_config::AppConfig;
 use crate::constants::*;
-use crate::model::model::*;
-use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform, ModelIndex};
+use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform};
 use crate::model::util::load_gltf;
 use crate::model::vertex::*;
 use crate::scene::scene::*;
@@ -9,7 +8,6 @@ use crate::scene::scene2::GScene;
 use crate::util;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 pub struct InputController {
@@ -90,39 +88,7 @@ impl<'a> AppState<'a> {
                     label: Some("Global bind group"),
                 });
 
-        let model_index_bind_group_layout =
-            app_config
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("model index bind group layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-        let model_index_bind_group =
-            app_config
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &model_index_bind_group_layout,
-                    label: Some("model index bind group"),
-                    entries: &[wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: gscene.instance_data.model_index_buffer.as_entire_binding(),
-                    }],
-                });
-
-        let bind_groups = vec![
-            camera_bind_group,
-            global_instance_bind_group,
-            model_index_bind_group,
-        ];
+        let bind_groups = vec![camera_bind_group, global_instance_bind_group];
 
         let render_pipeline_layout =
             app_config
@@ -132,7 +98,6 @@ impl<'a> AppState<'a> {
                     bind_group_layouts: &[
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
-                        &model_index_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -202,10 +167,12 @@ impl<'a> AppState<'a> {
         let transform1_1 = cgmath::Matrix4::identity();
         let transform_1_2 = cgmath::Matrix4::from_translation(cgmath::vec3(0.8, 0.0, 0.0));
         let t1 = LocalTransform {
-            transform_matrix: transform1_1,
+            transform_matrix: transform1_1.into(),
+            model_index: 0,
         };
         let t2 = LocalTransform {
-            transform_matrix: transform_1_2,
+            transform_matrix: transform_1_2.into(),
+            model_index: 1,
         };
         my_scene.add_instances(0, vec![t1]);
         my_scene

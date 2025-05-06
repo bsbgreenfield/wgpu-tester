@@ -1,6 +1,5 @@
-use super::model2::GMesh;
+use super::model2::{GMesh, LocalTransform};
 use super::vertex::ModelVertex;
-use crate::scene::camera::OPENGL_TO_WGPU_MATRIX;
 use crate::scene::scene2::*;
 use gltf::accessor::DataType;
 use gltf::buffer::View;
@@ -42,9 +41,13 @@ pub fn find_meshes(
         //}
         if let Some(mesh) = root_node.mesh() {
             // this is an instance of a mesh. Push the current base translation
+            let local_transform: LocalTransform = LocalTransform {
+                model_index: 0,
+                transform_matrix: base_translation,
+            };
             scene_mesh_data
                 .transformation_matrices
-                .push(base_translation);
+                .push(local_transform);
             // check mesh_ids to see if this particular mesh has already been added, if so, the index
             // of the match is equal to the index within mesh_instances that we want to increment by 1
             for (idx, m) in scene_mesh_data.mesh_ids.iter().enumerate() {

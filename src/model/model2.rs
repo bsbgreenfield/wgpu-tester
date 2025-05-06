@@ -126,17 +126,11 @@ pub trait ToRawMatrix {
     fn as_raw_matrix(&self) -> [[f32; 4]; 4];
 }
 
-#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct LocalTransform {
-    pub transform_matrix: cgmath::Matrix4<f32>,
-}
-impl ops::Mul<LocalTransform> for LocalTransform {
-    type Output = LocalTransform;
-    fn mul(self, rhs: LocalTransform) -> Self::Output {
-        LocalTransform {
-            transform_matrix: self.transform_matrix * rhs.transform_matrix,
-        }
-    }
+    pub transform_matrix: [[f32; 4]; 4],
+    pub model_index: u32,
 }
 
 impl LocalTransform {
@@ -147,12 +141,6 @@ impl LocalTransform {
         w_vector: [f32; 4],
     ) -> [[f32; 4]; 4] {
         [x_vector, y_vector, z_vector, w_vector]
-    }
-
-    pub fn from_raw_matrix(matrix: [[f32; 4]; 4]) -> Self {
-        Self {
-            transform_matrix: matrix.into(),
-        }
     }
 
     pub const fn identity() -> [[f32; 4]; 4] {
@@ -166,7 +154,8 @@ impl LocalTransform {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress,
+            array_stride: (mem::size_of::<[[f32; 4]; 4]>() as wgpu::BufferAddress)
+                + (mem::size_of::<u32>() as wgpu::BufferAddress),
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -189,6 +178,11 @@ impl LocalTransform {
                     shader_location: 6,
                     format: wgpu::VertexFormat::Float32x4,
                 },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 7,
+                    format: wgpu::VertexFormat::Uint32,
+                },
             ],
         }
     }
@@ -208,24 +202,4 @@ impl ops::Mul<[[f32; 4]; 4]> for GlobalTransform {
         let a = self.transform_matrix * cgmath::Matrix4::<f32>::from(rhs);
         a.into()
     }
-}
-
-pub struct ModelIndex {
-    pub idx: u32,
-}
-
-impl ModelIndex {
-    //pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-    //    use std::mem;
-    //    wgpu::VertexBufferLayout {
-    //        array_stride: mem::size_of::<u32>() as wgpu::BufferAddress,
-    //        step_mode: wgpu::VertexStepMode::Vertex,
-
-    //        attributes: &[wgpu::VertexAttribute {
-    //            offset: 0,
-    //            shader_location: 7,
-    //            format: wgpu::VertexFormat::Uint32,
-    //        }],
-    //    }
-    //}
 }

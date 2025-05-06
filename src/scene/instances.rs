@@ -51,20 +51,20 @@ impl InstanceData {
         Self::_get_raw_data(&self.object_instances)
     }
 
-    /// update the instances for the object at the given index
-    pub fn update_object_instances(
-        &mut self,
-        object_idx: usize,
-        instance_indices: Vec<usize>,
-        new_instances: &mut Vec<LocalTransform>,
-    ) {
-        for (i, idx) in instance_indices.iter().enumerate() {
-            // replace the instances at indices "idx" of object at index "object index"
-            let new_transform =
-                new_instances.remove(i) * self.object_instances[object_idx].transforms[*idx];
-            self.object_instances[object_idx].transforms[*idx] = new_transform;
-        }
-    }
+    //    /// update the instances for the object at the given index
+    //    pub fn update_object_instances(
+    //        &mut self,
+    //        object_idx: usize,
+    //        instance_indices: Vec<usize>,
+    //        new_instances: &mut Vec<LocalTransform>,
+    //    ) {
+    //        for (i, idx) in instance_indices.iter().enumerate() {
+    //            // replace the instances at indices "idx" of object at index "object index"
+    //            let new_transform =
+    //                new_instances.remove(i) * self.object_instances[object_idx].transforms[*idx];
+    //            self.object_instances[object_idx].transforms[*idx] = new_transform;
+    //        }
+    //    }
 
     pub fn get_buffer(&self) -> &wgpu::Buffer {
         &self.instance_transform_buffer
@@ -99,10 +99,10 @@ impl ObjectInstances {
             .map(|t| t.as_raw_matrix())
             .collect::<Vec<[[f32; 4]; 4]>>()
     }
-    pub fn apply_transforms(&mut self, t_matrices: &[cgmath::Matrix4<f32>]) {
-        assert!(t_matrices.len() == self.transforms.len());
-        for (i, transform) in self.transforms.iter_mut().enumerate() {
-            transform.transform_matrix = transform.transform_matrix.concat(&t_matrices[i]);
-        }
-    }
+    //    pub fn apply_transforms(&mut self, t_matrices: &[cgmath::Matrix4<f32>]) {
+    //        assert!(t_matrices.len() == self.transforms.len());
+    //        for (i, transform) in self.transforms.iter_mut().enumerate() {
+    //            transform.transform_matrix = transform.transform_matrix.concat(&t_matrices[i]);
+    //        }
+    //    }
 }
