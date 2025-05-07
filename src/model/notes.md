@@ -150,3 +150,18 @@ tldr: local transform buffer contains one value per mesh instance, each primitiv
 
 the bug was that i wasnt passing in the correct range to the transforms. The instances range needs to correspond to the
 indices within the local transform buffer, not just 0 to the number of instances.
+
+
+# drawing primitives using the new data layout
+Example, we have a model that has two meshes, the first mesh needs to be drawn twice, and the second mesh needs to be drawn once.
+
+The local transform data will look like this:
+[LT1, LT2, LT3]
+two transforms for mesh 0, and one transform for mesh 1.
+But now we want to draw the model twice! The transform buffer looks like this after adding the model instance:
+[LT1, LT1, LT2, LT2, LT3, LT3]
+the local transforms are all duplicated. 
+
+in order to draw mesh 0 we need to draw it (mesh instance count) * (model instance count) number of times
+
+

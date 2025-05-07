@@ -19,6 +19,12 @@ pub enum GltfErrors {
     NormalsError(String),
 }
 
+#[derive(Debug)]
+pub enum InitializationError<'a> {
+    InstanceDataInitializationError(&'a str),
+    SceneInitializationError,
+}
+
 // each Model has exactly one node tree
 // in order to draw itself, it traverses this tree
 // creating the required buffers

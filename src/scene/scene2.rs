@@ -86,6 +86,9 @@ pub struct GScene {
 }
 
 impl GScene {
+    pub fn init(&mut self, device: &wgpu::Device) {
+        self.instance_data.init(device);
+    }
     pub fn new<'a>(
         nodes: gltf::iter::Nodes<'a>,
         root_nodes_ids: Vec<usize>,
@@ -137,26 +140,36 @@ impl GScene {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let local_transformation_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Local transform buffer"),
-                contents: bytemuck::cast_slice(&scene_mesh_data.transformation_matrices),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-
         let camera = get_camera_default(aspect_ratio, device);
         //   println!("transformations: ");
         //   for t in scene_mesh_data.transformation_matrices.iter() {
         //       println!("{:?}", t);
         //   }
 
-        let offset_x: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(0.8, 0.5, 0.0))
-                .into();
         let identity: [[f32; 4]; 4] = cgmath::Matrix4::<f32>::identity().into();
-        let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity, offset_x];
-        let instance_data =
-            InstanceData2::new(local_transformation_buffer, global_transform_data, device);
+        let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity];
+
+        // we need the number of meshes per model so that we can keep track of the proper
+        // local transform offsets as we add new instances of models. The responsibility for
+        // keeping track of this is delegated now to InstanceData
+
+        let mut model_mesh_offsets = Vec::with_capacity(models.len());
+        let mut sum = 0;
+        for model in models.iter() {
+            model_mesh_offsets.push(sum);
+            sum += model.mesh_instances.iter().sum::<u32>() as usize;
+        }
+        model_mesh_offsets.push(sum);
+
+        // this seems rather dumb.
+        let model_instances = models.iter().map(|_| 1).collect();
+
+        let instance_data = InstanceData2::new(
+            model_instances,
+            model_mesh_offsets,
+            scene_mesh_data.transformation_matrices, // local transforms
+            global_transform_data,                   // global transforms
+        );
 
         Ok(Self {
             models,
@@ -172,14 +185,21 @@ impl GScene {
     /// [model_idx] : index of the model in the scenes models vec
     /// [global_transforms] global transform to apply to this instance
     pub fn add_model_instances(&mut self, model_idx: usize, global_transforms: Vec<[[f32; 4]; 4]>) {
+        self.instance_data
+            .add_model_instance(&self.models, model_idx, global_transforms);
     }
 
     pub fn get_camera_buf(&self) -> &wgpu::Buffer {
         &self.camera.camera_buffer
     }
 
-    pub fn get_global_buf(&self) -> &wgpu::Buffer {
-        &self.instance_data.global_transform_buffer
+    pub fn get_global_buf(&self) -> Result<&wgpu::Buffer, InitializationError> {
+        if self.instance_data.global_transform_buffer.is_some() {
+            return Ok(self.instance_data.global_transform_buffer.as_ref().unwrap());
+        }
+        Err(InitializationError::InstanceDataInitializationError(
+            "Global buffer has not been initialized! Please call InstanceData.init() when your data is ready",
+        ))
     }
     pub fn get_camera_uniform_data(&self) -> [[f32; 4]; 4] {
         self.camera.camera_uniform.view_proj

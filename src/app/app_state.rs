@@ -1,3 +1,4 @@
+use super::app;
 use super::app_config::AppConfig;
 use crate::constants::*;
 use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform};
@@ -54,7 +55,12 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let gscene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+        let mut gscene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+        let offset_x: [[f32; 4]; 4] =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(1.8, 0.5, 0.0))
+                .into();
+        gscene.add_model_instances(0, vec![offset_x.into()]);
+        gscene.init(&app_config.device);
         let (camera_bind_group_layout, camera_bind_group) =
             crate::scene::camera::get_camera_bind_group(
                 gscene.get_camera_buf(),
@@ -83,7 +89,10 @@ impl<'a> AppState<'a> {
                     layout: &global_instance_bind_group_layout,
                     entries: &[BindGroupEntry {
                         binding: 1,
-                        resource: gscene.get_global_buf().as_entire_binding(),
+                        resource: gscene
+                            .get_global_buf()
+                            .expect("should be initialized")
+                            .as_entire_binding(),
                     }],
                     label: Some("Global bind group"),
                 });
@@ -216,7 +225,11 @@ impl<'a> AppState<'a> {
             .instance_data
             .update_global_transform_x(0, new_t);
         self.app_config.queue.write_buffer(
-            &self.gscene.instance_data.global_transform_buffer,
+            self.gscene
+                .instance_data
+                .global_transform_buffer
+                .as_ref()
+                .expect("global buffer should be initialized"),
             0,
             bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
         );
@@ -267,7 +280,12 @@ impl<'a> AppState<'a> {
             //}
             render_pass.set_vertex_buffer(
                 1,
-                self.gscene.instance_data.local_transform_buffer.slice(..),
+                self.gscene
+                    .instance_data
+                    .local_transform_buffer
+                    .as_ref()
+                    .expect("local transform data should be initialized")
+                    .slice(..),
             );
             render_pass.draw_scene(&self.gscene);
         }

@@ -1,6 +1,7 @@
 use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use crate::scene::scene2::GScene;
 use crate::scene::scene2::SceneBufferData;
+use gltf::json::scene;
 use gltf::{Mesh, Primitive};
 use std::ops::{self, Range};
 use std::rc::Rc;
@@ -83,7 +84,13 @@ pub struct GModel {
 pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
     fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, scene: &GScene, instances: Range<u32>);
-    fn draw_gmodel(&mut self, model: &'a GModel, scene: &GScene);
+    fn draw_gmodel(
+        &mut self,
+        model: &'a GModel,
+        scene: &GScene,
+        instances: u32,
+        num_mesh_instances: u32,
+    );
     fn draw_scene(&mut self, scene: &'a GScene);
 }
 
@@ -108,17 +115,31 @@ where
             self.draw_indexed(0..primitive.indices_length, 0, instances.clone());
         }
     }
-    fn draw_gmodel(&mut self, model: &'b GModel, scene: &GScene) {
-        let mut offset: u32 = 0;
+    fn draw_gmodel(
+        &mut self,
+        model: &'b GModel,
+        scene: &GScene,
+        model_offset: u32,
+        model_instance_count: u32,
+    ) {
+        let mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
-            self.draw_gmesh_instanced(&mesh, scene, offset..offset + model.mesh_instances[idx]);
-            offset += model.mesh_instances[idx];
+            let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
+            assert_eq!(num_mesh_instances, 2);
+            self.draw_gmesh_instanced(mesh, scene, mesh_offset..mesh_offset + num_mesh_instances);
         }
     }
 
     fn draw_scene(&mut self, scene: &'b GScene) {
-        for model in scene.models.iter() {
-            self.draw_gmodel(model, scene);
+        let mut offset: u32 = 0;
+        for (idx, model) in scene.models.iter().enumerate() {
+            self.draw_gmodel(
+                model,
+                scene,
+                offset,
+                scene.instance_data.model_instances[idx] as u32,
+            );
+            offset += scene.instance_data.model_instances[idx] as u32;
         }
     }
 }
