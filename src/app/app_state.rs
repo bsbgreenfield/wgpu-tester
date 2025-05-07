@@ -55,9 +55,9 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let mut gscene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+        let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
         let offset_x: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(1.8, 0.5, 0.0))
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
                 .into();
         gscene.add_model_instances(0, vec![offset_x.into()]);
         gscene.init(&app_config.device);

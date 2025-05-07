@@ -159,7 +159,6 @@ impl GScene {
             model_mesh_offsets.push(sum);
             sum += model.mesh_instances.iter().sum::<u32>() as usize;
         }
-        model_mesh_offsets.push(sum);
 
         // this seems rather dumb.
         let model_instances = models.iter().map(|_| 1).collect();

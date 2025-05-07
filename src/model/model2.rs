@@ -122,11 +122,11 @@ where
         model_offset: u32,
         model_instance_count: u32,
     ) {
-        let mesh_offset = model_offset;
+        let mut mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
             let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
-            assert_eq!(num_mesh_instances, 2);
             self.draw_gmesh_instanced(mesh, scene, mesh_offset..mesh_offset + num_mesh_instances);
+            mesh_offset += num_mesh_instances;
         }
     }
 

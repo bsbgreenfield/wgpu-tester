@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use wgpu::util::DeviceExt;
 
 use crate::model::{
@@ -11,7 +13,7 @@ pub struct InstanceData2 {
     pub local_transform_data: Vec<LocalTransform>,
     pub global_transform_buffer: Option<wgpu::Buffer>,
     pub global_transform_data: Vec<[[f32; 4]; 4]>,
-    instance_local_offsets: Vec<usize>,
+    pub instance_local_offsets: Vec<usize>,
 }
 
 impl InstanceData2 {
@@ -82,34 +84,37 @@ impl InstanceData2 {
     ) -> Result<&mut Self, InitializationError> {
         // step 1: create a new vec from all the mesh instances associated with the model
         let model_instance_count = self.model_instances[model_index];
+        assert_eq!(model_instance_count, 1);
         let model_mesh_count = models[model_index].mesh_instances.iter().sum::<u32>() as usize;
+        assert_eq!(model_mesh_count, 3);
 
-        let mut transform_slice =
-            self.local_transform_data[self.instance_local_offsets[model_index]
-                ..model_mesh_count * self.model_instances[model_index]]
-                .to_vec();
+        let mut transform_slice = self.local_transform_data
+            [self.instance_local_offsets[model_index]..model_mesh_count * model_instance_count]
+            .to_vec();
 
         // step 2: expand the vec with the appropriate number of new transforms
         let mut offset = 0;
-        let mut current_mesh_instances_count = 0;
         for mesh_instance_count in models[model_index].mesh_instances.iter() {
-            for i in 0..new_instance_count {
-                // the number of transforms associated with this mesh instance is equal to
-                // the number of instances of this mesh that a single model has times the total
-                // number of models
-                current_mesh_instances_count =
-                    (*mesh_instance_count) as usize * model_instance_count;
+            for _ in 0..*mesh_instance_count {
+                for i in 0..new_instance_count {
+                    // the number of transforms associated with this mesh instance is equal to
+                    // the number of instances of this mesh that a single model has times the total
+                    // number of models
 
-                let mut new_transform = transform_slice[offset].clone();
-                new_transform.model_index = (i + model_instance_count) as u32;
-                transform_slice.insert(offset + current_mesh_instances_count, new_transform);
+                    let mut new_transform = transform_slice[offset].clone();
+                    new_transform.model_index = (i + model_instance_count) as u32;
+                    // the index of the last mesh instance is offset + the number of meshes we started
+                    // with + the number of meshes we have already added
+                    transform_slice.insert(offset + i + 1, new_transform);
+                }
+                // new offset is the
+                offset += new_instance_count + 1;
             }
-            offset += current_mesh_instances_count;
         }
 
         // step 3: splice the local transform data vec with this new expanded vec
         self.local_transform_data.splice(
-            self.instance_local_offsets[model_index]..self.instance_local_offsets[model_index + 1],
+            self.instance_local_offsets[model_index]..model_mesh_count,
             transform_slice,
         );
         // step 4: increase the offsets for all the models after this one by the number of new
@@ -124,10 +129,6 @@ impl InstanceData2 {
             *offset_val += num_new_instances;
         }
 
-        println!("Local transforms: ");
-        for lt in self.local_transform_data.iter() {
-            println!("{:?}", lt);
-        }
         Ok(self)
     }
 
@@ -145,17 +146,12 @@ impl InstanceData2 {
         }
         // the number of
         let offset_end = self.model_instances[model_index];
-        println!("offset_end: {}", offset_end);
         self.global_transform_data
             .splice(offset_end..offset_end, global_transforms);
 
         // increment the number of mesh instances by num new instances
         self.model_instances[model_index] += new_instance_count;
 
-        println!("global transforms: ");
-        for gt in self.global_transform_data.iter() {
-            println!("{:?}", gt);
-        }
         Ok(())
     }
 }
