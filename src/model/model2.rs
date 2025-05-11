@@ -110,8 +110,14 @@ where
                 start: (primitive.indices_offset as u64),
                 end: ((primitive.indices_length * 2) as u64 + primitive.indices_offset as u64),
             };
-            self.set_vertex_buffer(0, scene.vertex_buffer.slice(r));
-            self.set_index_buffer(scene.index_buffer.slice(ri), wgpu::IndexFormat::Uint16);
+            self.set_vertex_buffer(
+                0,
+                scene.vertex_data.vertex_buffer.as_ref().unwrap().slice(r),
+            );
+            self.set_index_buffer(
+                scene.index_data.index_buffer.as_ref().unwrap().slice(ri),
+                wgpu::IndexFormat::Uint16,
+            );
             self.draw_indexed(0..primitive.indices_length, 0, instances.clone());
         }
     }

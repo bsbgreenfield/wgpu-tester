@@ -79,16 +79,36 @@ fn test(nodes: Vec<Node>) {
 }
 pub struct GScene {
     pub models: Vec<GModel>,
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
+    pub vertex_data: VertexData,
+    pub index_data: IndexData,
     pub camera: Camera,
     pub instance_data: InstanceData2,
 }
 
 impl GScene {
     pub fn init(&mut self, device: &wgpu::Device) {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Vertex Buffer"),
+            contents: bytemuck::cast_slice(&self.vertex_data.vertices),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Index Buffer"),
+            contents: bytemuck::cast_slice(&self.index_data.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        self.vertex_data.vertex_buffer.insert(vertex_buffer);
+        self.index_data.index_buffer.insert(index_buffer);
         self.instance_data.init(device);
     }
+
+    fn init_data(scene_buffer_data: SceneBufferData) -> (VertexData, IndexData) {
+        let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
+        let index_data = IndexData::from_data(scene_buffer_data.index_buf);
+        (vertex_data, index_data)
+    }
+
     pub fn new<'a>(
         nodes: gltf::iter::Nodes<'a>,
         root_nodes_ids: Vec<usize>,
@@ -129,16 +149,7 @@ impl GScene {
             });
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Vertex Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.vertex_buf),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Index Buffer"),
-            contents: bytemuck::cast_slice(&scene_buffer_data.index_buf),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let (vertex_data, index_data) = GScene::init_data(scene_buffer_data);
 
         let camera = get_camera_default(aspect_ratio, device);
         //   println!("transformations: ");
@@ -173,8 +184,8 @@ impl GScene {
         Ok(Self {
             models,
             camera,
-            vertex_buffer,
-            index_buffer,
+            vertex_data,
+            index_data,
             instance_data,
         })
     }
@@ -208,5 +219,36 @@ impl GScene {
     }
     pub fn get_speed(&self) -> f32 {
         return self.camera.speed;
+    }
+}
+
+trait SceneData<T> {
+    fn from_data(data: T) -> Self;
+}
+
+pub struct VertexData {
+    vertices: Vec<ModelVertex>,
+    pub vertex_buffer: Option<wgpu::Buffer>,
+}
+pub struct IndexData {
+    indices: Vec<u16>,
+    pub index_buffer: Option<wgpu::Buffer>,
+}
+
+impl SceneData<Vec<ModelVertex>> for VertexData {
+    fn from_data(data: Vec<ModelVertex>) -> Self {
+        VertexData {
+            vertices: data,
+            vertex_buffer: None,
+        }
+    }
+}
+
+impl SceneData<Vec<u16>> for IndexData {
+    fn from_data(data: Vec<u16>) -> Self {
+        IndexData {
+            indices: data,
+            index_buffer: None,
+        }
     }
 }
