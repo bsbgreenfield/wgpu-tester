@@ -4,8 +4,10 @@ use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
 use std::rc::Rc;
+use wgpu::core::device;
 use wgpu::util::DeviceExt;
 
+use super::camera;
 use super::camera::get_camera_default;
 use super::camera::Camera;
 use super::instances2::InstanceData2;
@@ -87,26 +89,19 @@ pub struct GScene {
 
 impl GScene {
     pub fn init(&mut self, device: &wgpu::Device) {
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Vertex Buffer"),
-            contents: bytemuck::cast_slice(&self.vertex_data.vertices),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Scene Index Buffer"),
-            contents: bytemuck::cast_slice(&self.index_data.indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        self.vertex_data.vertex_buffer.insert(vertex_buffer);
-        self.index_data.index_buffer.insert(index_buffer);
+        self.init_data(device);
         self.instance_data.init(device);
     }
 
-    fn init_data(scene_buffer_data: SceneBufferData) -> (VertexData, IndexData) {
+    fn new_data(scene_buffer_data: SceneBufferData) -> (VertexData, IndexData) {
         let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
         let index_data = IndexData::from_data(scene_buffer_data.index_buf);
         (vertex_data, index_data)
+    }
+
+    fn init_data(&mut self, device: &wgpu::Device) {
+        self.vertex_data.init(device);
+        self.index_data.init(device);
     }
 
     pub fn new<'a>(
@@ -143,13 +138,14 @@ impl GScene {
                 get_meshes(&scene_mesh_data.mesh_ids, &nodes, &mut scene_buffer_data)?;
 
             models.push(GModel {
+                base_vertex: 0,
                 byte_data: buffer_data.clone(),
                 meshes,
                 mesh_instances: scene_mesh_data.mesh_instances.clone(),
             });
         }
 
-        let (vertex_data, index_data) = GScene::init_data(scene_buffer_data);
+        let (vertex_data, index_data) = GScene::new_data(scene_buffer_data);
 
         let camera = get_camera_default(aspect_ratio, device);
         //   println!("transformations: ");
@@ -190,6 +186,64 @@ impl GScene {
         })
     }
 
+    pub fn merge<'a>(
+        mut scene1: GScene,
+        mut scene2: GScene,
+    ) -> Result<GScene, InitializationError<'a>> {
+        //TODO: check that these arent the same gltf file
+        let vertex_len_1 = scene1.vertex_data.vertices.len();
+        let vertex_data = scene1.vertex_data.extend(scene2.vertex_data);
+        let index_data = scene1.index_data.extend(scene2.index_data);
+        let camera = scene1.camera;
+
+        // we are combining the vertex buffers together, but the index buffers still refer to the
+        // relative offsets of the vertices within their original data buffers. To fix this, every
+        // time we merge scene with another, the second scene needs to store the fact that all
+        // their indices should be offset by an amount equal to the number of vertices in the
+        // previous scene.
+        println!("base vertex for scene2 models is: {}", vertex_len_1);
+        for other_model in scene2.models.iter_mut() {
+            other_model.base_vertex = (vertex_len_1) as u32;
+        }
+        scene1.models.extend(scene2.models);
+        let models = scene1.models;
+        let instance_data: InstanceData2 = scene1.instance_data.merge(scene2.instance_data);
+
+        println!("Locals:");
+        for local in instance_data.local_transform_data.iter() {
+            println!("{:?}", local)
+        }
+        println!("Globals:");
+        for global in instance_data.global_transform_data.iter() {
+            println!("{:?}", global);
+        }
+        Ok(GScene {
+            models,
+            vertex_data,
+            index_data,
+            camera,
+            instance_data,
+        })
+    }
+
+    pub fn update_global_transform(
+        &mut self,
+        model_number: usize,
+        model_instance_index: usize,
+        new_transform: GlobalTransform,
+    ) {
+        let mut instance_count = 0;
+        // skip all preceding models
+        for idx in 0..model_number {
+            instance_count += self.instance_data.model_instances[idx];
+        }
+        // skip all preceding instances of this model
+        instance_count += model_instance_index;
+        println!("updating model at index {}", instance_count);
+        self.instance_data
+            .update_global_transform_x(instance_count, new_transform);
+    }
+
     /// add an instance of an existing model to the scene. The number of instances corresponds to
     /// the size of the global transform vec
     /// [model_idx] : index of the model in the scenes models vec
@@ -224,6 +278,8 @@ impl GScene {
 
 trait SceneData<T> {
     fn from_data(data: T) -> Self;
+    fn init(&mut self, device: &wgpu::Device);
+    fn extend(self, other: Self) -> Self;
 }
 
 pub struct VertexData {
@@ -236,6 +292,21 @@ pub struct IndexData {
 }
 
 impl SceneData<Vec<ModelVertex>> for VertexData {
+    fn extend(mut self, other: Self) -> Self {
+        self.vertices.extend(other.vertices);
+        Self {
+            vertices: self.vertices,
+            vertex_buffer: None,
+        }
+    }
+    fn init(&mut self, device: &wgpu::Device) {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Vertex Buffer"),
+            contents: bytemuck::cast_slice(&self.vertices),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+        self.vertex_buffer = Some(vertex_buffer);
+    }
     fn from_data(data: Vec<ModelVertex>) -> Self {
         VertexData {
             vertices: data,
@@ -245,6 +316,21 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
 }
 
 impl SceneData<Vec<u16>> for IndexData {
+    fn extend(mut self, other: Self) -> Self {
+        self.indices.extend(other.indices);
+        Self {
+            indices: self.indices,
+            index_buffer: None,
+        }
+    }
+    fn init(&mut self, device: &wgpu::Device) {
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Scene Index Buffer"),
+            contents: bytemuck::cast_slice(&self.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        self.index_buffer = Some(index_buffer);
+    }
     fn from_data(data: Vec<u16>) -> Self {
         IndexData {
             indices: data,

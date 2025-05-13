@@ -1,12 +1,14 @@
 use std::ops::Deref;
 
-use wgpu::util::DeviceExt;
+use wgpu::{core::global, util::DeviceExt};
 
 use crate::model::{
     self,
     model2::{GModel, GlobalTransform, LocalTransform},
     util::InitializationError,
 };
+
+use super::instances::InstanceData;
 pub struct InstanceData2 {
     pub model_instances: Vec<usize>,
     pub local_transform_buffer: Option<wgpu::Buffer>,
@@ -84,9 +86,7 @@ impl InstanceData2 {
     ) -> Result<&mut Self, InitializationError> {
         // step 1: create a new vec from all the mesh instances associated with the model
         let model_instance_count = self.model_instances[model_index];
-        assert_eq!(model_instance_count, 1);
         let model_mesh_count = models[model_index].mesh_instances.iter().sum::<u32>() as usize;
-        assert_eq!(model_mesh_count, 3);
 
         let mut transform_slice = self.local_transform_data
             [self.instance_local_offsets[model_index]..model_mesh_count * model_instance_count]
@@ -153,5 +153,35 @@ impl InstanceData2 {
         self.model_instances[model_index] += new_instance_count;
 
         Ok(())
+    }
+
+    pub fn merge(mut self, mut other: Self) -> Self {
+        let number_of_models = self.model_instances.iter().sum::<usize>();
+        for local_transform in other.local_transform_data.iter_mut() {
+            local_transform.model_index += number_of_models as u32;
+        }
+        self.model_instances.extend(other.model_instances);
+        let model_instances = self.model_instances;
+        self.instance_local_offsets
+            .extend(other.instance_local_offsets);
+        let instance_local_offsets = self.instance_local_offsets;
+
+        self.local_transform_data.extend(other.local_transform_data);
+        let local_transform_data = self.local_transform_data;
+        self.global_transform_data
+            .extend(other.global_transform_data);
+
+        let global_transform_data = self.global_transform_data;
+        let local_transform_buffer = None;
+        let global_transform_buffer = None;
+
+        Self {
+            model_instances,
+            instance_local_offsets,
+            local_transform_data,
+            global_transform_data,
+            local_transform_buffer,
+            global_transform_buffer,
+        }
     }
 }

@@ -1,7 +1,6 @@
 use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use crate::scene::scene2::GScene;
 use crate::scene::scene2::SceneBufferData;
-use gltf::json::scene;
 use gltf::{Mesh, Primitive};
 use std::ops::{self, Range};
 use std::rc::Rc;
@@ -79,11 +78,18 @@ pub struct GModel {
     pub byte_data: Rc<Vec<u8>>,
     pub meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
+    pub base_vertex: u32,
 }
 
 pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, scene: &GScene, instances: Range<u32>);
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'a GMesh,
+        scene: &GScene,
+        instances: Range<u32>,
+        base_vertex: u32,
+    );
     fn draw_gmodel(
         &mut self,
         model: &'a GModel,
@@ -99,7 +105,13 @@ where
     'b: 'a,
 {
     fn draw_gmesh(&mut self, mesh: &'b GMesh) {}
-    fn draw_gmesh_instanced(&mut self, mesh: &'b GMesh, scene: &GScene, instances: Range<u32>) {
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'b GMesh,
+        scene: &GScene,
+        instances: Range<u32>,
+        base_vertex: u32,
+    ) {
         for primitive in mesh.primitives.iter() {
             let r: Range<u64> = Range {
                 start: primitive.vertices_offset as u64,
@@ -118,7 +130,11 @@ where
                 scene.index_data.index_buffer.as_ref().unwrap().slice(ri),
                 wgpu::IndexFormat::Uint16,
             );
-            self.draw_indexed(0..primitive.indices_length, 0, instances.clone());
+            self.draw_indexed(
+                0..primitive.indices_length,
+                base_vertex as i32,
+                instances.clone(),
+            );
         }
     }
     fn draw_gmodel(
@@ -131,7 +147,12 @@ where
         let mut mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
             let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
-            self.draw_gmesh_instanced(mesh, scene, mesh_offset..mesh_offset + num_mesh_instances);
+            self.draw_gmesh_instanced(
+                mesh,
+                scene,
+                mesh_offset..mesh_offset + num_mesh_instances,
+                model.base_vertex,
+            );
             mesh_offset += num_mesh_instances;
         }
     }

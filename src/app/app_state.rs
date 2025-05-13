@@ -9,7 +9,8 @@ use crate::scene::scene2::GScene;
 use crate::util;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
-use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
+use wgpu::core::id::markers::BindGroupLayout;
+use wgpu::{BindGroup, BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 pub struct InputController {
     pub key_d_down: bool,
@@ -55,51 +56,15 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
-        let offset_y: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
-                .into();
-        let offset_x: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
-                .into();
-        gscene.add_model_instances(0, vec![offset_x, offset_y]);
-        gscene.init(&app_config.device);
+        let gscene = AppState::get_scene(&app_config, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             crate::scene::camera::get_camera_bind_group(
                 gscene.get_camera_buf(),
                 &app_config.device,
             );
-        let global_instance_bind_group_layout =
-            app_config
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Global bind group layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-        let global_instance_bind_group =
-            app_config
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &global_instance_bind_group_layout,
-                    entries: &[BindGroupEntry {
-                        binding: 1,
-                        resource: gscene
-                            .get_global_buf()
-                            .expect("should be initialized")
-                            .as_entire_binding(),
-                    }],
-                    label: Some("Global bind group"),
-                });
 
+        let (global_instance_bind_group_layout, global_instance_bind_group) =
+            AppState::setup_global_instance_bind_group(&app_config, &gscene);
         let bind_groups = vec![camera_bind_group, global_instance_bind_group];
 
         let render_pipeline_layout =
@@ -173,6 +138,86 @@ impl<'a> AppState<'a> {
             input_controller: InputController::new(),
         }
     }
+
+    fn setup_global_instance_bind_group(
+        app_config: &AppConfig,
+        scene: &GScene,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let global_instance_bind_group_layout =
+            app_config
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Global bind group layout"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+        let global_instance_bind_group =
+            app_config
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &global_instance_bind_group_layout,
+                    entries: &[BindGroupEntry {
+                        binding: 1,
+                        resource: scene
+                            .get_global_buf()
+                            .expect("should be initialized")
+                            .as_entire_binding(),
+                    }],
+                    label: Some("Global bind group"),
+                });
+        (
+            global_instance_bind_group_layout,
+            global_instance_bind_group,
+        )
+    }
+    fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
+        let mut box_scene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+        let mut truck_scene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
+
+        let offset_x: [[f32; 4]; 4] =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
+                .into();
+        let offset_y: [[f32; 4]; 4] =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
+                .into();
+        box_scene.update_global_transform(
+            0,
+            0,
+            GlobalTransform {
+                transform_matrix: offset_y.into(),
+            },
+        );
+        let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
+        gscene.init(&app_config.device);
+        gscene
+        //let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
+        //let offset_y: [[f32; 4]; 4] =
+        //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
+        //        .into();
+        //let offset_x: [[f32; 4]; 4] =
+        //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
+        //        .into();
+        //gscene.add_model_instances(0, vec![offset_x, offset_y]);
+        //let mut gscene2 = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+        //let offset_box = GlobalTransform {
+        //    transform_matrix: cgmath::Matrix4::<f32>::from_translation(
+        //        cgmath::Vector3::<f32>::new(1.5, -4.2, 5.0),
+        //    ),
+        //};
+        //gscene2.update_global_transform(0, 0, offset_box);
+        //let mut merged_scene = GScene::merge(gscene, gscene2).expect("merge success?");
+        //merged_scene.init(&app_config.device);
+        //merged_scene
+    }
+
     fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {
         let mut my_scene: SceneScaffold =
             SceneScaffold::from_vertices(vec![VERTICES], vec![INDICES], device);
@@ -220,22 +265,22 @@ impl<'a> AppState<'a> {
 
     pub fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
-        let new_t = GlobalTransform {
-            transform_matrix: rot.into(),
-        };
-        self.gscene
-            .instance_data
-            .update_global_transform_x(0, new_t);
-        self.app_config.queue.write_buffer(
-            self.gscene
-                .instance_data
-                .global_transform_buffer
-                .as_ref()
-                .expect("global buffer should be initialized"),
-            0,
-            bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
-        );
+        // let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
+        // let new_t = GlobalTransform {
+        //     transform_matrix: rot.into(),
+        // };
+        // self.gscene
+        //     .instance_data
+        //     .update_global_transform_x(0, new_t);
+        // self.app_config.queue.write_buffer(
+        //     self.gscene
+        //         .instance_data
+        //         .global_transform_buffer
+        //         .as_ref()
+        //         .expect("global buffer should be initialized"),
+        //     0,
+        //     bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
+        // );
         Ok(())
     }
 
