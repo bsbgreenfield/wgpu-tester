@@ -49,6 +49,10 @@ impl InstanceData2 {
             contents: bytemuck::cast_slice(&self.local_transform_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        println!("initializing the global transform buffer ",);
+        for g in self.global_transform_data.iter() {
+            println!("{g:?}")
+        }
         let global_transform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 contents: bytemuck::cast_slice(&self.global_transform_data),
@@ -56,8 +60,8 @@ impl InstanceData2 {
                 label: Some("global instance buffer"),
             });
 
-        self.global_transform_buffer.insert(global_transform_buffer);
-        self.local_transform_buffer.insert(local_transform_buffer);
+        self.global_transform_buffer = Some(global_transform_buffer);
+        self.local_transform_buffer = Some(local_transform_buffer);
     }
 
     pub fn add_model_instance(

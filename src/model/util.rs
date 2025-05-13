@@ -203,12 +203,10 @@ pub fn get_primitive_vertex_data(
         })
         .collect();
 
-    // the offset for the composed vertex buffer is equal to the length of the elements in the
-    // ModelVertex vec * 24. This is because each ModelVertex is 24 bytes long.
-    // similarly, the length of the slice is the length of the f32 slice * 4, because an f32 is 4
-    // bytes long.
+    // these are the offset and length of the ModelVertex structs within the buffer, not to be
+    // confused with the byte offsets.
     let vertex_offset = vertex_data.len() as u32;
-    let vertex_len = (position_f32.len() * 4) + (normals_f32.len() * 4);
+    let vertex_len = vertex_vec.len();
 
     vertex_data.extend(vertex_vec);
 

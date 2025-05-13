@@ -1,3 +1,4 @@
+use crate::model::model;
 use crate::model::model2::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
@@ -138,7 +139,6 @@ impl GScene {
                 get_meshes(&scene_mesh_data.mesh_ids, &nodes, &mut scene_buffer_data)?;
 
             models.push(GModel {
-                base_vertex: 0,
                 byte_data: buffer_data.clone(),
                 meshes,
                 mesh_instances: scene_mesh_data.mesh_instances.clone(),
@@ -190,33 +190,25 @@ impl GScene {
         mut scene1: GScene,
         mut scene2: GScene,
     ) -> Result<GScene, InitializationError<'a>> {
+        let (vertex_count, index_count) = scene1.get_total_vertex_index_len();
         //TODO: check that these arent the same gltf file
-        let vertex_len_1 = scene1.vertex_data.vertices.len();
         let vertex_data = scene1.vertex_data.extend(scene2.vertex_data);
         let index_data = scene1.index_data.extend(scene2.index_data);
+        // grab the camera from the first scene
+        // TODO: make camera part of init?
         let camera = scene1.camera;
 
-        // we are combining the vertex buffers together, but the index buffers still refer to the
-        // relative offsets of the vertices within their original data buffers. To fix this, every
-        // time we merge scene with another, the second scene needs to store the fact that all
-        // their indices should be offset by an amount equal to the number of vertices in the
-        // previous scene.
-        println!("base vertex for scene2 models is: {}", vertex_len_1);
-        for other_model in scene2.models.iter_mut() {
-            other_model.base_vertex = (vertex_len_1) as u32;
+        // when merging the second scene into the first, we need to adjust the offsets for the
+        // vertex data and index data that is being stored in their primitives
+        for model in scene2.models.iter_mut() {
+            for mesh in model.meshes.iter_mut() {
+                mesh.update_primitive_offsets(vertex_count, index_count);
+            }
         }
         scene1.models.extend(scene2.models);
         let models = scene1.models;
         let instance_data: InstanceData2 = scene1.instance_data.merge(scene2.instance_data);
 
-        println!("Locals:");
-        for local in instance_data.local_transform_data.iter() {
-            println!("{:?}", local)
-        }
-        println!("Globals:");
-        for global in instance_data.global_transform_data.iter() {
-            println!("{:?}", global);
-        }
         Ok(GScene {
             models,
             vertex_data,
@@ -273,6 +265,17 @@ impl GScene {
     }
     pub fn get_speed(&self) -> f32 {
         return self.camera.speed;
+    }
+    fn get_total_vertex_index_len(&self) -> (u32, u32) {
+        let mut vertex_count = 0;
+        let mut index_count = 0;
+        for model in self.models.iter() {
+            for mesh in model.meshes.iter() {
+                vertex_count += mesh.get_total_vertex_len();
+                index_count += mesh.get_total_index_len();
+            }
+        }
+        (vertex_count, index_count)
     }
 }
 

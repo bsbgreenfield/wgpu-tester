@@ -1,4 +1,3 @@
-use super::app;
 use super::app_config::AppConfig;
 use crate::constants::*;
 use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform};
@@ -9,7 +8,6 @@ use crate::scene::scene2::GScene;
 use crate::util;
 use cgmath::SquareMatrix;
 use std::sync::Arc;
-use wgpu::core::id::markers::BindGroupLayout;
 use wgpu::{BindGroup, BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 pub struct InputController {
@@ -182,22 +180,21 @@ impl<'a> AppState<'a> {
         let mut box_scene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
         let mut truck_scene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
 
-        let offset_x: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
-                .into();
+        let offset_x =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0));
         let offset_y: [[f32; 4]; 4] =
             cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
                 .into();
-        box_scene.update_global_transform(
-            0,
+        let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
+        gscene.update_global_transform(
+            1,
             0,
             GlobalTransform {
-                transform_matrix: offset_y.into(),
+                transform_matrix: offset_x,
             },
         );
-        //let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
-        truck_scene.init(&app_config.device);
-        truck_scene
+        gscene.init(&app_config.device);
+        gscene
         //let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
         //let offset_y: [[f32; 4]; 4] =
         //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
@@ -265,22 +262,29 @@ impl<'a> AppState<'a> {
 
     pub fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
-        // let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
-        // let new_t = GlobalTransform {
-        //     transform_matrix: rot.into(),
-        // };
-        // self.gscene
-        //     .instance_data
-        //     .update_global_transform_x(0, new_t);
-        // self.app_config.queue.write_buffer(
-        //     self.gscene
-        //         .instance_data
-        //         .global_transform_buffer
-        //         .as_ref()
-        //         .expect("global buffer should be initialized"),
-        //     0,
-        //     bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
-        // );
+        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
+        let rot1 = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.8));
+        let new_t = GlobalTransform {
+            transform_matrix: rot.into(),
+        };
+        let new_t2 = GlobalTransform {
+            transform_matrix: rot1.into(),
+        };
+        self.gscene
+            .instance_data
+            .update_global_transform_x(0, new_t);
+        self.gscene
+            .instance_data
+            .update_global_transform_x(1, new_t2);
+        self.app_config.queue.write_buffer(
+            self.gscene
+                .instance_data
+                .global_transform_buffer
+                .as_ref()
+                .expect("global buffer should be initialized"),
+            0,
+            bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
+        );
         Ok(())
     }
 

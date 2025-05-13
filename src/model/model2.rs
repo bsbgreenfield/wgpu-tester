@@ -76,31 +76,42 @@ impl GMesh {
             primitives: g_primitives,
         })
     }
+
+    pub fn get_total_vertex_len(&self) -> u32 {
+        let mut vertex_count = 0;
+        for primitive in self.primitives.iter() {
+            vertex_count += primitive.vertices_length;
+        }
+        return vertex_count;
+    }
+    pub fn get_total_index_len(&self) -> u32 {
+        let mut index_count = 0;
+        for primitive in self.primitives.iter() {
+            index_count += primitive.indices_length;
+        }
+        return index_count;
+    }
+    /// this function increases the offset of all primitive vertex and index data in the mesh.
+    /// This is needed for gltf file merging, as the scene to which this mesh belongs is being
+    /// appended to a list of vertices and indices
+    pub fn update_primitive_offsets(&mut self, vertex_count: u32, index_count: u32) {
+        for primitive in self.primitives.iter_mut() {
+            primitive.vertices_offset += vertex_count;
+            primitive.indices_offset += index_count;
+        }
+    }
 }
 
 pub struct GModel {
     pub byte_data: Rc<Vec<u8>>,
     pub meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
-    pub base_vertex: u32,
 }
 
 pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
-    fn draw_gmesh_instanced(
-        &mut self,
-        mesh: &'a GMesh,
-        scene: &GScene,
-        instances: Range<u32>,
-        base_index: u32,
-    );
-    fn draw_gmodel(
-        &mut self,
-        model: &'a GModel,
-        scene: &GScene,
-        instances: u32,
-        num_mesh_instances: u32,
-    );
+    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>);
+    fn draw_gmodel(&mut self, model: &'a GModel, instances: u32, num_mesh_instances: u32) -> u32;
     fn draw_scene(&mut self, scene: &'a GScene);
 }
 
@@ -109,17 +120,10 @@ where
     'b: 'a,
 {
     fn draw_gmesh(&mut self, mesh: &'b GMesh) {}
-    fn draw_gmesh_instanced(
-        &mut self,
-        mesh: &'b GMesh,
-        scene: &GScene,
-        instances: Range<u32>,
-        base_index: u32,
-    ) {
+    fn draw_gmesh_instanced(&mut self, mesh: &'b GMesh, instances: Range<u32>) {
         for primitive in mesh.primitives.iter() {
             self.draw_indexed(
-                (primitive.indices_offset + base_index)
-                    ..(primitive.indices_length + primitive.indices_offset),
+                primitive.indices_offset..(primitive.indices_length + primitive.indices_offset),
                 primitive.vertices_offset as i32,
                 instances.clone(),
             );
@@ -128,33 +132,26 @@ where
     fn draw_gmodel(
         &mut self,
         model: &'b GModel,
-        scene: &GScene,
         model_offset: u32,
         model_instance_count: u32,
-    ) {
+    ) -> u32 {
         let mut mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
             let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
-            self.draw_gmesh_instanced(
-                mesh,
-                scene,
-                mesh_offset..mesh_offset + num_mesh_instances,
-                0,
-            );
+            self.draw_gmesh_instanced(mesh, mesh_offset..mesh_offset + num_mesh_instances);
             mesh_offset += num_mesh_instances;
         }
+        mesh_offset
     }
 
     fn draw_scene(&mut self, scene: &'b GScene) {
         let mut offset: u32 = 0;
         for (idx, model) in scene.models.iter().enumerate() {
-            self.draw_gmodel(
+            offset += self.draw_gmodel(
                 model,
-                scene,
                 offset,
                 scene.instance_data.model_instances[idx] as u32,
             );
-            offset += scene.instance_data.model_instances[idx] as u32;
         }
     }
 }
