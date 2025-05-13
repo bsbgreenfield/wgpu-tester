@@ -195,9 +195,9 @@ impl<'a> AppState<'a> {
                 transform_matrix: offset_y.into(),
             },
         );
-        let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
-        gscene.init(&app_config.device);
-        gscene
+        //let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
+        truck_scene.init(&app_config.device);
+        truck_scene
         //let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
         //let offset_y: [[f32; 4]; 4] =
         //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
@@ -326,6 +326,24 @@ impl<'a> AppState<'a> {
             //if self.scene.draw_scene(&mut render_pass).is_err() {
             //    panic!("error");
             //}
+            render_pass.set_vertex_buffer(
+                0,
+                self.gscene
+                    .vertex_data
+                    .vertex_buffer
+                    .as_ref()
+                    .unwrap()
+                    .slice(..),
+            );
+            render_pass.set_index_buffer(
+                self.gscene
+                    .index_data
+                    .index_buffer
+                    .as_ref()
+                    .unwrap()
+                    .slice(..),
+                wgpu::IndexFormat::Uint16,
+            );
             render_pass.set_vertex_buffer(
                 1,
                 self.gscene

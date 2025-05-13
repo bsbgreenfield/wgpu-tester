@@ -43,6 +43,10 @@ impl GPrimitive {
             &scene_buffer_data.main_buffer_data,
         )?;
 
+        println!(
+            "index offset: {}, index length: {}",
+            indices_offset, indices_length
+        );
         Ok(Self {
             vertices_offset,
             vertices_length,
@@ -88,7 +92,7 @@ pub trait GDrawModel<'a> {
         mesh: &'a GMesh,
         scene: &GScene,
         instances: Range<u32>,
-        base_vertex: u32,
+        base_index: u32,
     );
     fn draw_gmodel(
         &mut self,
@@ -110,29 +114,13 @@ where
         mesh: &'b GMesh,
         scene: &GScene,
         instances: Range<u32>,
-        base_vertex: u32,
+        base_index: u32,
     ) {
         for primitive in mesh.primitives.iter() {
-            let r: Range<u64> = Range {
-                start: primitive.vertices_offset as u64,
-                end: (primitive.vertices_length + primitive.vertices_offset) as u64,
-            };
-
-            let ri: Range<u64> = Range {
-                start: (primitive.indices_offset as u64),
-                end: ((primitive.indices_length * 2) as u64 + primitive.indices_offset as u64),
-            };
-            self.set_vertex_buffer(
-                0,
-                scene.vertex_data.vertex_buffer.as_ref().unwrap().slice(r),
-            );
-            self.set_index_buffer(
-                scene.index_data.index_buffer.as_ref().unwrap().slice(ri),
-                wgpu::IndexFormat::Uint16,
-            );
             self.draw_indexed(
-                0..primitive.indices_length,
-                base_vertex as i32,
+                (primitive.indices_offset + base_index)
+                    ..(primitive.indices_length + primitive.indices_offset),
+                primitive.vertices_offset as i32,
                 instances.clone(),
             );
         }
@@ -151,7 +139,7 @@ where
                 mesh,
                 scene,
                 mesh_offset..mesh_offset + num_mesh_instances,
-                model.base_vertex,
+                0,
             );
             mesh_offset += num_mesh_instances;
         }

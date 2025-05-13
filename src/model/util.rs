@@ -125,7 +125,7 @@ pub fn get_primitive_index_data(
     // of the buffer (of u16s) * 2 (2 bytes per u16 element);
     // however, we are NOT multiplying indices len by 2, becuase we acutally need that number
     // as is for render_pass.draw_indexed.
-    let primitive_indices_offset = index_data.len() * 2;
+    let primitive_indices_offset = index_data.len();
     let primitive_indices_len = indices_u16.len();
 
     index_data.extend(indices_u16);
@@ -207,7 +207,7 @@ pub fn get_primitive_vertex_data(
     // ModelVertex vec * 24. This is because each ModelVertex is 24 bytes long.
     // similarly, the length of the slice is the length of the f32 slice * 4, because an f32 is 4
     // bytes long.
-    let vertex_offset = (vertex_data.len() as u32) * 24;
+    let vertex_offset = vertex_data.len() as u32;
     let vertex_len = (position_f32.len() * 4) + (normals_f32.len() * 4);
 
     vertex_data.extend(vertex_vec);
