@@ -273,9 +273,6 @@ impl<'a> AppState<'a> {
         self.gscene
             .instance_data
             .update_global_transform_x(0, new_t);
-        self.gscene
-            .instance_data
-            .update_global_transform_x(1, new_t2);
         self.app_config.queue.write_buffer(
             self.gscene
                 .instance_data
