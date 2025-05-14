@@ -1,9 +1,5 @@
-use crate::model::model::Model;
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
 use winit::window::Window;
-
-use crate::model::vertex::ModelVertex;
 
 use crate::app::app_config::AppConfig;
 
@@ -15,7 +11,7 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.0, 1.0,
 );
 
-pub async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
+pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         ..Default::default()
     });
@@ -70,54 +66,4 @@ pub async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
         queue,
         config,
     }
-}
-pub fn create_vertex_bind_group<B>(
-    buffer_data: B,
-    device: &wgpu::Device,
-    label: Option<&str>,
-    buf_label: Option<&str>,
-    buffer_usage: wgpu::BufferUsages,
-    binding_type: wgpu::BindingType,
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup)
-where
-    B: Copy + Clone + bytemuck::Zeroable + bytemuck::Pod,
-{
-    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: buf_label,
-        contents: bytemuck::cast_slice(&[buffer_data]),
-        usage: buffer_usage,
-    });
-    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: binding_type,
-            count: None,
-        }],
-        label,
-    });
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: buffer.as_entire_binding(),
-        }],
-        label,
-    });
-
-    (bind_group_layout, bind_group)
-}
-
-pub fn create_models(
-    vertices: Vec<&[ModelVertex]>,
-    indices: Vec<&[u32]>,
-    device: &wgpu::Device,
-) -> Vec<Model> {
-    let mut models = Vec::with_capacity(vertices.len());
-    for data in vertices.iter().zip(indices.iter()) {
-        let o = Model::from_vertices(data.0, data.1, device);
-        models.push(o);
-    }
-    models
 }

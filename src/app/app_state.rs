@@ -1,14 +1,11 @@
 use super::app_config::AppConfig;
-use crate::constants::*;
-use crate::model::model2::{GDrawModel, GlobalTransform, LocalTransform};
+use super::util;
+use crate::model::model::{GDrawModel, GlobalTransform, LocalTransform};
 use crate::model::util::load_gltf;
 use crate::model::vertex::*;
-use crate::scene::scene::*;
-use crate::scene::scene2::GScene;
-use crate::util;
-use cgmath::SquareMatrix;
+use crate::scene::scene::GScene;
 use std::sync::Arc;
-use wgpu::{BindGroup, BindGroupEntry, BindGroupLayoutEntry};
+use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 pub struct InputController {
     pub key_d_down: bool,
@@ -219,22 +216,6 @@ impl<'a> AppState<'a> {
         gscene
     }
 
-    fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {
-        let mut my_scene: SceneScaffold =
-            SceneScaffold::from_vertices(vec![VERTICES], vec![INDICES], device);
-        let transform1_1 = cgmath::Matrix4::identity();
-        let transform_1_2 = cgmath::Matrix4::from_translation(cgmath::vec3(0.8, 0.0, 0.0));
-        let t1 = LocalTransform {
-            transform_matrix: transform1_1.into(),
-            model_index: 0,
-        };
-        let t2 = LocalTransform {
-            transform_matrix: transform_1_2.into(),
-            model_index: 1,
-        };
-        my_scene.add_instances(0, vec![t1]);
-        my_scene
-    }
     fn process_input(&mut self) {
         let speed: f32 = self.gscene.get_speed();
         if self.input_controller.key_a_down {
@@ -264,7 +245,7 @@ impl<'a> AppState<'a> {
         );
     }
 
-    pub fn update(&mut self) -> Result<(), UpdateResult> {
+    pub(super) fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
         let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
         let rot1 = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.8));
@@ -289,7 +270,7 @@ impl<'a> AppState<'a> {
         Ok(())
     }
 
-    pub fn draw(&self) -> Result<(), wgpu::SurfaceError> {
+    pub(super) fn draw(&self) -> Result<(), wgpu::SurfaceError> {
         let output = self.app_config.surface.get_current_texture()?;
         let view = output
             .texture
@@ -368,7 +349,7 @@ impl<'a> AppState<'a> {
         Ok(())
     }
 
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub(super) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.app_config.resize(new_size);
     }
 }

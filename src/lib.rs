@@ -2,7 +2,6 @@ pub mod app;
 pub mod constants;
 pub mod model;
 pub mod scene;
-pub mod util;
 use winit::event_loop::{self, EventLoop};
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
