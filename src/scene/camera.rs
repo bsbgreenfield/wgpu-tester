@@ -53,7 +53,7 @@ pub struct Camera {
     pub speed: f32,
 }
 #[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 0.5, 0.5,
@@ -87,11 +87,11 @@ impl Camera {
         })
     }
 
-    pub fn update_position(&mut self, point: cgmath::Point3<f32>) {
+    pub(super) fn update_position(&mut self, point: cgmath::Point3<f32>) {
         self.camera_data.update_position(point);
         self.camera_uniform.update(&self.camera_data);
     }
-    pub fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
+    pub(super) fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
         self.camera_data.update_rot(rot);
         self.camera_uniform.update(&self.camera_data);
     }
@@ -112,7 +112,7 @@ impl CameraUniform {
     }
 }
 
-pub fn get_camera_bind_group(
+pub(super) fn get_camera_bind_group(
     camera_buffer: &wgpu::Buffer,
     device: &wgpu::Device,
 ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
@@ -142,7 +142,7 @@ pub fn get_camera_bind_group(
 
     (camera_bind_group_layout, camera_bind_group)
 }
-pub fn get_camera_default(aspect_ratio: f32, device: &wgpu::Device) -> Camera {
+pub(super) fn get_camera_default(aspect_ratio: f32, device: &wgpu::Device) -> Camera {
     let camera = Camera::new(
         std::f32::consts::FRAC_PI_4,
         aspect_ratio,

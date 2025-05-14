@@ -1,5 +1,4 @@
 pub mod app;
-pub mod constants;
 pub mod model;
 pub mod scene;
 use winit::event_loop::{self, EventLoop};

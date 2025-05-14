@@ -1,7 +1,11 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::app::app_config::AppConfig;
+use crate::{
+    app::app_config::AppConfig,
+    model::{model::GlobalTransform, util::load_gltf},
+    scene::scene::GScene,
+};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
@@ -66,4 +70,46 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
         queue,
         config,
     }
+}
+pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
+    let mut box_scene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
+    let mut truck_scene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
+
+    let offset_x =
+        cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0));
+    let offset_3 =
+        cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(14.8, 0.5, 0.0));
+    let offset_y: [[f32; 4]; 4] =
+        cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -6.0, 0.0))
+            .into();
+    let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
+    gscene.update_global_transform(
+        1,
+        0,
+        GlobalTransform {
+            transform_matrix: offset_x,
+        },
+    );
+    let mut box_transforms = Vec::<[[f32; 4]; 4]>::new();
+    let mut x = 5.0;
+    let mut z = 1.0;
+    let y = 0.0;
+    for i in 0..3 {
+        if i % 15 == 0 {
+            z += 7.5;
+            x = 1.0
+        } else {
+            x += 7.5
+        }
+        box_transforms
+            .push(cgmath::Matrix4::from_translation(cgmath::Vector3::new(x, y, -z)).into());
+    }
+    gscene.add_model_instances(
+        0,
+        vec![cgmath::Matrix4::from_translation(cgmath::Vector3::new(-5.0, 0.0, 0.0)).into()],
+    );
+    gscene.add_model_instances(0, box_transforms);
+    gscene.add_model_instances(1, vec![offset_3.into()]);
+    gscene.init(&app_config.device);
+    gscene
 }

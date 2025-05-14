@@ -143,11 +143,7 @@ where
     fn draw_scene(&mut self, scene: &'b GScene) {
         let mut offset: u32 = 0;
         for (idx, model) in scene.models.iter().enumerate() {
-            offset += self.draw_gmodel(
-                model,
-                offset,
-                scene.instance_data.model_instances[idx] as u32,
-            );
+            offset += self.draw_gmodel(model, offset, scene.get_model_instances()[idx] as u32);
         }
     }
 }

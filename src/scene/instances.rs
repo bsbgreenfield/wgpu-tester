@@ -7,7 +7,7 @@ use crate::model::{
     util::InitializationError,
 };
 
-pub struct InstanceData {
+pub(super) struct InstanceData {
     pub model_instances: Vec<usize>,
     pub local_transform_buffer: Option<wgpu::Buffer>,
     pub local_transform_data: Vec<LocalTransform>,

@@ -51,12 +51,9 @@ impl<'a> AppState<'a> {
             });
 
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let gscene = AppState::get_scene(&app_config, aspect_ratio);
+        let gscene = util::get_scene(&app_config, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
-            crate::scene::camera::get_camera_bind_group(
-                gscene.get_camera_buf(),
-                &app_config.device,
-            );
+            gscene.get_camera_bind_group(&app_config.device);
 
         let (global_instance_bind_group_layout, global_instance_bind_group) =
             AppState::setup_global_instance_bind_group(&app_config, &gscene);
@@ -173,48 +170,6 @@ impl<'a> AppState<'a> {
             global_instance_bind_group,
         )
     }
-    fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-        let mut box_scene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
-        let mut truck_scene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
-
-        let offset_x =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0));
-        let offset_3 =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(14.8, 0.5, 0.0));
-        let offset_y: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -6.0, 0.0))
-                .into();
-        let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
-        gscene.update_global_transform(
-            1,
-            0,
-            GlobalTransform {
-                transform_matrix: offset_x,
-            },
-        );
-        let mut box_transforms = Vec::<[[f32; 4]; 4]>::new();
-        let mut x = 5.0;
-        let mut z = 1.0;
-        let y = 0.0;
-        for i in 0..3 {
-            if i % 15 == 0 {
-                z += 7.5;
-                x = 1.0
-            } else {
-                x += 7.5
-            }
-            box_transforms
-                .push(cgmath::Matrix4::from_translation(cgmath::Vector3::new(x, y, -z)).into());
-        }
-        gscene.add_model_instances(
-            0,
-            vec![cgmath::Matrix4::from_translation(cgmath::Vector3::new(-5.0, 0.0, 0.0)).into()],
-        );
-        gscene.add_model_instances(0, box_transforms);
-        gscene.add_model_instances(1, vec![offset_3.into()]);
-        gscene.init(&app_config.device);
-        gscene
-    }
 
     fn process_input(&mut self) {
         let speed: f32 = self.gscene.get_speed();
@@ -255,17 +210,14 @@ impl<'a> AppState<'a> {
         let new_t2 = GlobalTransform {
             transform_matrix: rot1.into(),
         };
-        self.gscene
-            .instance_data
-            .update_global_transform_x(0, new_t);
+        self.gscene.update_global_transform_x(0, new_t);
         self.app_config.queue.write_buffer(
             self.gscene
-                .instance_data
-                .global_transform_buffer
+                .get_global_transform_buffer()
                 .as_ref()
                 .expect("global buffer should be initialized"),
             0,
-            bytemuck::cast_slice(&self.gscene.instance_data.global_transform_data),
+            bytemuck::cast_slice(&self.gscene.get_camera_uniform_data()),
         );
         Ok(())
     }
@@ -314,27 +266,16 @@ impl<'a> AppState<'a> {
             //}
             render_pass.set_vertex_buffer(
                 0,
-                self.gscene
-                    .vertex_data
-                    .vertex_buffer
-                    .as_ref()
-                    .unwrap()
-                    .slice(..),
+                self.gscene.get_vertex_buffer().as_ref().unwrap().slice(..),
             );
             render_pass.set_index_buffer(
-                self.gscene
-                    .index_data
-                    .index_buffer
-                    .as_ref()
-                    .unwrap()
-                    .slice(..),
+                self.gscene.get_index_buffer().as_ref().unwrap().slice(..),
                 wgpu::IndexFormat::Uint16,
             );
             render_pass.set_vertex_buffer(
                 1,
                 self.gscene
-                    .instance_data
-                    .local_transform_buffer
+                    .get_local_transform_buffer()
                     .as_ref()
                     .expect("local transform data should be initialized")
                     .slice(..),
