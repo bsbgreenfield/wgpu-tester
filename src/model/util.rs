@@ -1,4 +1,4 @@
-use super::model2::{GMesh, LocalTransform};
+use super::model2::{GMesh, GModel, LocalTransform};
 use super::vertex::ModelVertex;
 use crate::scene::scene2::*;
 use gltf::accessor::DataType;
@@ -95,13 +95,17 @@ pub fn get_meshes(
     Ok(meshes)
 }
 
-fn has_mesh(mesh_wrappers: &Vec<GMesh>, index: u32) -> bool {
-    for wrapper in mesh_wrappers {
-        if wrapper.index == index {
-            return true;
-        }
+pub fn calcualate_model_mesh_offsets(
+    models: &Vec<GModel>,
+    model_instances: &Vec<usize>,
+) -> Vec<usize> {
+    let mut model_mesh_offsets = Vec::with_capacity(models.len());
+    let mut sum = 0;
+    for (idx, model) in models.iter().enumerate() {
+        model_mesh_offsets.push(sum);
+        sum += (model.mesh_instances.iter().sum::<u32>() as usize) * model_instances[idx];
     }
-    false
+    model_mesh_offsets
 }
 
 pub fn get_primitive_index_data(

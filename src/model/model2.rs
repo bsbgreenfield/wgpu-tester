@@ -43,10 +43,6 @@ impl GPrimitive {
             &scene_buffer_data.main_buffer_data,
         )?;
 
-        println!(
-            "index offset: {}, index length: {}",
-            indices_offset, indices_length
-        );
         Ok(Self {
             vertices_offset,
             vertices_length,

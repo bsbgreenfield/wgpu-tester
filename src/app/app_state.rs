@@ -182,8 +182,10 @@ impl<'a> AppState<'a> {
 
         let offset_x =
             cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0));
+        let offset_3 =
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(14.8, 0.5, 0.0));
         let offset_y: [[f32; 4]; 4] =
-            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
+            cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -6.0, 0.0))
                 .into();
         let mut gscene = GScene::merge(truck_scene, box_scene).unwrap();
         gscene.update_global_transform(
@@ -193,26 +195,28 @@ impl<'a> AppState<'a> {
                 transform_matrix: offset_x,
             },
         );
+        let mut box_transforms = Vec::<[[f32; 4]; 4]>::new();
+        let mut x = 5.0;
+        let mut z = 1.0;
+        let y = 0.0;
+        for i in 0..3 {
+            if i % 15 == 0 {
+                z += 7.5;
+                x = 1.0
+            } else {
+                x += 7.5
+            }
+            box_transforms
+                .push(cgmath::Matrix4::from_translation(cgmath::Vector3::new(x, y, -z)).into());
+        }
+        gscene.add_model_instances(
+            0,
+            vec![cgmath::Matrix4::from_translation(cgmath::Vector3::new(-5.0, 0.0, 0.0)).into()],
+        );
+        gscene.add_model_instances(0, box_transforms);
+        gscene.add_model_instances(1, vec![offset_3.into()]);
         gscene.init(&app_config.device);
         gscene
-        //let mut gscene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();
-        //let offset_y: [[f32; 4]; 4] =
-        //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(-5.0, -2.0, 0.0))
-        //        .into();
-        //let offset_x: [[f32; 4]; 4] =
-        //    cgmath::Matrix4::<f32>::from_translation(cgmath::Vector3::<f32>::new(4.8, 0.5, 0.0))
-        //        .into();
-        //gscene.add_model_instances(0, vec![offset_x, offset_y]);
-        //let mut gscene2 = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
-        //let offset_box = GlobalTransform {
-        //    transform_matrix: cgmath::Matrix4::<f32>::from_translation(
-        //        cgmath::Vector3::<f32>::new(1.5, -4.2, 5.0),
-        //    ),
-        //};
-        //gscene2.update_global_transform(0, 0, offset_box);
-        //let mut merged_scene = GScene::merge(gscene, gscene2).expect("merge success?");
-        //merged_scene.init(&app_config.device);
-        //merged_scene
     }
 
     fn create_scaffold(device: &wgpu::Device) -> SceneScaffold {

@@ -160,15 +160,9 @@ impl GScene {
         // local transform offsets as we add new instances of models. The responsibility for
         // keeping track of this is delegated now to InstanceData
 
-        let mut model_mesh_offsets = Vec::with_capacity(models.len());
-        let mut sum = 0;
-        for model in models.iter() {
-            model_mesh_offsets.push(sum);
-            sum += model.mesh_instances.iter().sum::<u32>() as usize;
-        }
-
         // this seems rather dumb.
-        let model_instances = models.iter().map(|_| 1).collect();
+        let model_instances: Vec<usize> = models.iter().map(|_| 1).collect();
+        let model_mesh_offsets = calcualate_model_mesh_offsets(&models, &model_instances);
 
         let instance_data = InstanceData2::new(
             model_instances,
@@ -207,7 +201,8 @@ impl GScene {
         }
         scene1.models.extend(scene2.models);
         let models = scene1.models;
-        let instance_data: InstanceData2 = scene1.instance_data.merge(scene2.instance_data);
+        let instance_data: InstanceData2 =
+            scene1.instance_data.merge(scene2.instance_data, &models);
 
         Ok(GScene {
             models,

@@ -1,11 +1,11 @@
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 
 use wgpu::{core::global, util::DeviceExt};
 
 use crate::model::{
     self,
     model2::{GModel, GlobalTransform, LocalTransform},
-    util::InitializationError,
+    util::{calcualate_model_mesh_offsets, InitializationError},
 };
 
 use super::instances::InstanceData;
@@ -49,10 +49,6 @@ impl InstanceData2 {
             contents: bytemuck::cast_slice(&self.local_transform_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        println!("initializing the global transform buffer ",);
-        for g in self.global_transform_data.iter() {
-            println!("{g:?}")
-        }
         let global_transform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 contents: bytemuck::cast_slice(&self.global_transform_data),
@@ -82,6 +78,12 @@ impl InstanceData2 {
 
     // this function is hilariously costly! probably warrants a restructuring of instancedata
     // even though it really shouldnt be in any hot loop
+    // second note: the below code gets confusing because we are working with two type of "instance" semantically.
+    // the first refers to a mesh instance for a model. There can be multiple instances of the same
+    // mesh in a single model
+    // the second refers to an instance OF THAT INSTANCE. so if there are two mesh instances (first
+    // definition) in a model, and we want to add a new model, we need to add one new instance
+    // (second definition) to each of those mesh instances (first definition)
     fn add_new_instances_local_data(
         &mut self,
         model_index: usize,
@@ -89,46 +91,50 @@ impl InstanceData2 {
         models: &Vec<GModel>,
     ) -> Result<&mut Self, InitializationError> {
         // step 1: create a new vec from all the mesh instances associated with the model
+        //
         let model_instance_count = self.model_instances[model_index];
         let model_mesh_count = models[model_index].mesh_instances.iter().sum::<u32>() as usize;
+        let tot_model_count = self.model_instances.iter().sum::<usize>();
 
-        let mut transform_slice = self.local_transform_data
-            [self.instance_local_offsets[model_index]..model_mesh_count * model_instance_count]
-            .to_vec();
+        // the offset for the first local transform for this model
+        let instance_offset = self.instance_local_offsets[model_index];
+        // the range of all the transforms that pertain to this model
+        let model_mesh_range: Range<usize> = Range {
+            start: instance_offset,
+            end: model_mesh_count * model_instance_count + instance_offset,
+        };
+        let mut transform_slice = self.local_transform_data[model_mesh_range.clone()].to_vec();
 
         // step 2: expand the vec with the appropriate number of new transforms
         let mut offset = 0;
         for mesh_instance_count in models[model_index].mesh_instances.iter() {
             for _ in 0..*mesh_instance_count {
                 for i in 0..new_instance_count {
-                    // the number of transforms associated with this mesh instance is equal to
-                    // the number of instances of this mesh that a single model has times the total
-                    // number of models
-
                     let mut new_transform = transform_slice[offset].clone();
-                    new_transform.model_index = (i + model_instance_count) as u32;
-                    // the index of the last mesh instance is offset + the number of meshes we started
-                    // with + the number of meshes we have already added
-                    transform_slice.insert(offset + i + 1, new_transform);
+                    new_transform.model_index = (i + tot_model_count) as u32;
+                    // we want to place the new instance of this mesh right after the last instance
+                    // of the mesh. That will be:
+                    // offset (relative offset for this slice)
+                    // plus i (the number of instances we have already added in this pass)
+                    // plus model instance count (for one model, there is one instance of this
+                    // particular mesh instance, and so on)
+                    transform_slice.insert(offset + i + model_instance_count, new_transform);
                 }
                 // new offset is the
-                offset += new_instance_count + 1;
+                offset += new_instance_count + model_instance_count;
             }
         }
 
         // step 3: splice the local transform data vec with this new expanded vec
-        self.local_transform_data.splice(
-            self.instance_local_offsets[model_index]..model_mesh_count,
-            transform_slice,
-        );
+        self.local_transform_data
+            .splice(model_mesh_range, transform_slice);
         // step 4: increase the offsets for all the models after this one by the number of new
         // instances just added
         let num_new_instances = model_mesh_count * new_instance_count;
-        let this_model_offset_val = self.instance_local_offsets[model_index];
         for offset_val in self
             .instance_local_offsets
             .iter_mut()
-            .skip(this_model_offset_val)
+            .skip(instance_offset + 1)
         {
             *offset_val += num_new_instances;
         }
@@ -143,15 +149,8 @@ impl InstanceData2 {
         model_index: usize,
         global_transforms: Vec<[[f32; 4]; 4]>,
     ) -> Result<(), InitializationError> {
-        let new_instance_count = global_transforms.len().clone();
-        let mut offset_start: usize = 0;
-        for i in 0..model_index {
-            offset_start += self.model_instances[i];
-        }
-        // the number of
-        let offset_end = self.model_instances[model_index];
-        self.global_transform_data
-            .splice(offset_end..offset_end, global_transforms);
+        let new_instance_count = global_transforms.len();
+        self.global_transform_data.extend(global_transforms);
 
         // increment the number of mesh instances by num new instances
         self.model_instances[model_index] += new_instance_count;
@@ -159,16 +158,16 @@ impl InstanceData2 {
         Ok(())
     }
 
-    pub fn merge(mut self, mut other: Self) -> Self {
+    /// merge the instance data together
+    pub fn merge(mut self, mut other: Self, models: &Vec<GModel>) -> Self {
         let number_of_models = self.model_instances.iter().sum::<usize>();
         for local_transform in other.local_transform_data.iter_mut() {
             local_transform.model_index += number_of_models as u32;
         }
         self.model_instances.extend(other.model_instances);
         let model_instances = self.model_instances;
-        self.instance_local_offsets
-            .extend(other.instance_local_offsets);
-        let instance_local_offsets = self.instance_local_offsets;
+
+        let instance_local_offsets = calcualate_model_mesh_offsets(models, &model_instances);
 
         self.local_transform_data.extend(other.local_transform_data);
         let local_transform_data = self.local_transform_data;
