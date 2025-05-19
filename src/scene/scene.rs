@@ -15,6 +15,7 @@ pub struct SceneBufferData {
     pub main_buffer_data: Rc<Vec<u8>>,
     pub vertex_buf: Vec<ModelVertex>,
     pub index_buf: Vec<u16>,
+    pub index_ranges: Vec<std::ops::Range<usize>>,
 }
 impl SceneBufferData {
     fn new(main_buffer_data: Rc<Vec<u8>>) -> Self {
@@ -22,6 +23,7 @@ impl SceneBufferData {
             main_buffer_data,
             vertex_buf: Vec::new(),
             index_buf: Vec::new(),
+            index_ranges: Vec::new(),
         }
     }
 }
@@ -98,10 +100,6 @@ impl GScene {
         let (vertex_data, index_data) = GScene::new_data(scene_buffer_data);
 
         let camera = get_camera_default(aspect_ratio, device);
-        //   println!("transformations: ");
-        //   for t in scene_mesh_data.transformation_matrices.iter() {
-        //       println!("{:?}", t);
-        //   }
 
         let identity: [[f32; 4]; 4] = cgmath::Matrix4::<f32>::identity().into();
         let global_transform_data: Vec<[[f32; 4]; 4]> = vec![identity];
@@ -112,6 +110,7 @@ impl GScene {
 
         // this seems rather dumb.
         let model_instances: Vec<usize> = models.iter().map(|_| 1).collect();
+
         let model_mesh_offsets = calculate_model_mesh_offsets(&models, &model_instances);
 
         let instance_data = InstanceData::new(
@@ -166,7 +165,7 @@ impl GScene {
         &mut self,
         model_number: usize,
         model_instance_index: usize,
-        new_transform: GlobalTransform,
+        new_transform: [[f32; 4]; 4],
     ) {
         let mut instance_count = 0;
         // skip all preceding models
@@ -234,11 +233,7 @@ impl GScene {
     pub fn get_model_instances(&self) -> &Vec<usize> {
         &self.instance_data.model_instances
     }
-    pub fn update_global_transform_x(
-        &mut self,
-        instance_idx: usize,
-        new_transform: GlobalTransform,
-    ) {
+    pub fn update_global_transform_x(&mut self, instance_idx: usize, new_transform: [[f32; 4]; 4]) {
         self.instance_data
             .update_global_transform_x(instance_idx, new_transform);
     }

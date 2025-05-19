@@ -37,11 +37,8 @@ impl GPrimitive {
             &scene_buffer_data.main_buffer_data,
         )?;
 
-        let (indices_offset, indices_length) = get_primitive_index_data(
-            &indices_accessor,
-            &mut scene_buffer_data.index_buf,
-            &scene_buffer_data.main_buffer_data,
-        )?;
+        let (indices_offset, indices_length) =
+            get_primitive_index_data(&indices_accessor, scene_buffer_data)?;
 
         Ok(Self {
             vertices_offset,
@@ -62,7 +59,7 @@ impl GMesh {
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
             // loop through the primitives and build out the vertex buffer and index buffer
-            // side effects!! I know!!! Im sorry!!
+            // side effects!
             let p = GPrimitive::new(primitive, scene_buffer_data)?;
             g_primitives.push(p);
         }

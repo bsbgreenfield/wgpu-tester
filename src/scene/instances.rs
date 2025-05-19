@@ -32,13 +32,11 @@ impl InstanceData {
             global_transform_data,
         }
     }
-    pub fn update_global_transform_x(
-        &mut self,
-        instance_idx: usize,
-        new_transform: GlobalTransform,
-    ) {
-        self.global_transform_data[instance_idx] =
-            new_transform * self.global_transform_data[instance_idx];
+    pub fn update_global_transform_x(&mut self, instance_idx: usize, new_transform: [[f32; 4]; 4]) {
+        let t = GlobalTransform {
+            transform_matrix: cgmath::Matrix4::from(new_transform),
+        };
+        self.global_transform_data[instance_idx] = t * self.global_transform_data[instance_idx];
     }
 
     pub fn init(&mut self, device: &wgpu::Device) {

@@ -1,7 +1,6 @@
 use super::app_config::AppConfig;
 use super::util;
 use crate::model::model::{GDrawModel, GlobalTransform, LocalTransform};
-use crate::model::util::load_gltf;
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
 use std::sync::Arc;
@@ -204,9 +203,7 @@ impl<'a> AppState<'a> {
         self.process_input();
         let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
         let rot1 = cgmath::Matrix4::from_angle_y(cgmath::Deg(-0.8));
-        let new_t = GlobalTransform {
-            transform_matrix: rot.into(),
-        };
+        let new_t = rot.into();
         let new_t2 = GlobalTransform {
             transform_matrix: rot1.into(),
         };
@@ -217,7 +214,7 @@ impl<'a> AppState<'a> {
                 .as_ref()
                 .expect("global buffer should be initialized"),
             0,
-            bytemuck::cast_slice(&self.gscene.get_camera_uniform_data()),
+            bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
         );
         Ok(())
     }

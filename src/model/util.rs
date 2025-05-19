@@ -5,8 +5,11 @@ use gltf::buffer::View;
 use gltf::{Accessor, Gltf};
 use std::fmt::Debug;
 use std::fs;
+use std::iter::Peekable;
+use std::ops::{Range, RangeBounds};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::vec::IntoIter;
 
 #[derive(Debug)]
 pub enum GltfErrors {
@@ -33,8 +36,7 @@ pub enum InitializationError<'a> {
 
 pub(super) fn get_primitive_index_data(
     indices_accessor: &Accessor,
-    index_data: &mut Vec<u16>,
-    byte_data: &Rc<Vec<u8>>,
+    scene_buffer_data: &mut SceneBufferData,
 ) -> Result<(u32, u32), GltfErrors> {
     if indices_accessor.data_type() != DataType::U16 {
         return Err(GltfErrors::IndicesError(String::from(
@@ -42,7 +44,21 @@ pub(super) fn get_primitive_index_data(
         )));
     }
     let indices_buffer_view = indices_accessor.view().ok_or(GltfErrors::NoView)?;
-    let indices_bytes = &byte_data[indices_buffer_view.offset()
+
+    let primitive_indices_range = std::ops::Range::<usize> {
+        start: indices_buffer_view.offset(),
+        end: indices_buffer_view.length() + indices_buffer_view.offset(),
+    };
+
+    // case 1: the range specified by this buffer has zero overlap with any of the ranges in sbd
+    // case 2: the range specified
+    let mut range_iter = scene_buffer_data
+        .index_ranges
+        .clone()
+        .into_iter()
+        .peekable();
+
+    let indices_bytes = &scene_buffer_data.main_buffer_data[indices_buffer_view.offset()
         ..(indices_buffer_view.length() + indices_buffer_view.offset())];
 
     // get a [u16] slice from the u8 data
@@ -52,10 +68,10 @@ pub(super) fn get_primitive_index_data(
     // of the buffer (of u16s) * 2 (2 bytes per u16 element);
     // however, we are NOT multiplying indices len by 2, becuase we acutally need that number
     // as is for render_pass.draw_indexed.
-    let primitive_indices_offset = index_data.len();
+    let primitive_indices_offset = scene_buffer_data.index_buf.len();
     let primitive_indices_len = indices_u16.len();
 
-    index_data.extend(indices_u16);
+    scene_buffer_data.index_buf.extend(indices_u16);
 
     Ok((
         primitive_indices_offset as u32,
