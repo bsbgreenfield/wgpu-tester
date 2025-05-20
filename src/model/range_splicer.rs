@@ -1,8 +1,8 @@
-use crate::scene::scene::SceneBufferData;
 use std::iter::Peekable;
 use std::ops::Range;
 use std::vec::IntoIter;
-#[derive(PartialEq, PartialOrd)]
+
+#[derive(PartialEq, PartialOrd, Debug)]
 enum IndexResult {
     StrictlyGreater,
     StrictlyLess,
@@ -40,10 +40,21 @@ fn get_index_result(
     } else if primitive_indices_range.start < current_range.start
         && primitive_indices_range.end > current_range.end
     {
-        IndexResult::FullyContained
+        IndexResult::FullyCover
     } else {
         panic!()
     }
+}
+
+fn splice_range(
+    range_vec: &mut Vec<Range<usize>>,
+    primitive_indices_range: &Range<usize>,
+    start_idx: usize,
+    end_idx: usize,
+) {
+    let left = std::cmp::min(primitive_indices_range.start, range_vec[start_idx].start);
+    let right = std::cmp::max(primitive_indices_range.end, range_vec[end_idx - 1].end);
+    range_vec.splice(start_idx..end_idx, vec![left..right]);
 }
 
 fn define_index_ranges(
@@ -75,16 +86,20 @@ fn define_index_ranges(
                 // before the current range
                 StrictlyLess => {
                     range_vec.insert(current_idx, primitive_indices_range.clone());
+                    break 'outer;
                 }
 
                 // if the primitive range overlaps the left side of this current range, replace the
                 // current range with a new one that spans backwards to include the start of this
                 // primitives range
                 LeftOverlap => {
-                    range_vec.splice(
-                        current_idx..current_idx,
-                        vec![primitive_indices_range.start..current_range.end],
+                    splice_range(
+                        range_vec,
+                        &primitive_indices_range,
+                        current_idx,
+                        current_idx + 1,
                     );
+                    break 'outer;
                 }
                 // do nothing, we are already covered
                 FullyContained => {}
@@ -95,52 +110,39 @@ fn define_index_ranges(
                 // 2. find a left overlap, splice in a vec which spans from the start of the vec in
                 //    which we first found to the end of the new one
                 FullyCover | RightOverlap => {
-                    if range_iter.peek().is_none() {
-                        break 'outer;
-                    }
-
                     let mut splice_offset = 0;
                     'inner: loop {
+                        splice_offset += 1;
                         if range_iter.peek().is_none() {
-                            range_vec.splice(
-                                current_idx..current_idx + splice_offset,
-                                vec![current_range.start..primitive_indices_range.end],
+                            splice_range(
+                                range_vec,
+                                &primitive_indices_range,
+                                current_idx,
+                                current_idx + splice_offset,
                             );
+                            break 'outer;
                         }
                         let next_range = range_iter.next().unwrap();
-                        splice_offset += 1;
                         let next_index_result =
                             get_index_result(&next_range, &primitive_indices_range);
                         if next_index_result == FullyCover {
                             continue 'inner;
                         }
                         if next_index_result == LeftOverlap {
-                            if index_result == FullyCover {
-                                range_vec.splice(
-                                    current_idx..current_idx + splice_offset,
-                                    vec![primitive_indices_range.start..next_range.end],
-                                );
-                            } else {
-                                range_vec.splice(
-                                    current_idx..current_idx + splice_offset,
-                                    vec![current_range.start..next_range.end],
-                                );
-                            }
+                            splice_range(
+                                range_vec,
+                                &primitive_indices_range,
+                                current_idx,
+                                current_idx + splice_offset + 1,
+                            );
                             break 'outer;
                         } else if next_index_result == StrictlyLess {
-                            if index_result == FullyCover {
-                                range_vec.splice(
-                                    current_idx..current_idx + splice_offset - 1,
-                                    vec![
-                                        primitive_indices_range.start..primitive_indices_range.end,
-                                    ],
-                                );
-                            } else {
-                                range_vec.splice(
-                                    current_idx..current_idx + splice_offset - 1,
-                                    vec![current_range.start..primitive_indices_range.end],
-                                );
-                            }
+                            splice_range(
+                                range_vec,
+                                &primitive_indices_range,
+                                current_idx,
+                                current_idx + splice_offset,
+                            );
                             break 'outer;
                         } else {
                             panic!();
@@ -148,6 +150,8 @@ fn define_index_ranges(
                     }
                 }
             }
+        } else {
+            panic!();
         }
         current_idx += 1;
     }
@@ -183,6 +187,118 @@ mod tests {
         indices_ranges.push(0..4);
         indices_ranges.push(7..10);
         let mut range_iter = indices_ranges.clone().into_iter().peekable();
-        let primitive_indices_range = Range { start: 12, end: 15 };
+        let primitive_indices_range = Range { start: 8, end: 15 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        println!("{:?}", indices_ranges);
+        assert_eq!(indices_ranges.len(), 2);
+        assert_eq!(indices_ranges[0], Range { start: 0, end: 4 });
+        assert_eq!(indices_ranges[1], Range { start: 7, end: 15 });
+    }
+
+    #[test]
+    fn test_new_right_overlap_2() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(0..4);
+        indices_ranges.push(7..10);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 10, end: 15 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 2);
+        assert_eq!(indices_ranges[0], Range { start: 0, end: 4 });
+        assert_eq!(indices_ranges[1], Range { start: 7, end: 15 });
+    }
+    #[test]
+    fn test_right_overlap_3() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(2..4);
+        indices_ranges.push(8..10);
+        indices_ranges.push(12..15);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 3, end: 13 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 1);
+        assert_eq!(indices_ranges[0], Range { start: 2, end: 15 });
+    }
+
+    #[test]
+    fn test_full_emcompass() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(2..4);
+        indices_ranges.push(7..10);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 0, end: 15 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 1);
+        assert_eq!(indices_ranges[0], Range { start: 0, end: 15 });
+    }
+    #[test]
+    fn test_part_emcompass() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(2..4);
+        indices_ranges.push(10..18);
+        indices_ranges.push(22..25);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 6, end: 20 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 3);
+        assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
+        assert_eq!(indices_ranges[1], Range { start: 6, end: 20 });
+        assert_eq!(indices_ranges[2], Range { start: 22, end: 25 });
+    }
+
+    #[test]
+    fn test_new_left_overlap_1() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(2..4);
+        indices_ranges.push(8..10);
+        indices_ranges.push(12..15);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 6, end: 9 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 3);
+        assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
+        assert_eq!(indices_ranges[1], Range { start: 6, end: 10 });
+        assert_eq!(indices_ranges[2], Range { start: 12, end: 15 });
+    }
+    #[test]
+    fn test_new_in_betweener() {
+        let mut indices_ranges = Vec::<Range<usize>>::new();
+        indices_ranges.push(2..4);
+        indices_ranges.push(12..20);
+        let mut range_iter = indices_ranges.clone().into_iter().peekable();
+        let primitive_indices_range = Range { start: 6, end: 10 };
+        define_index_ranges(
+            &mut indices_ranges,
+            &mut range_iter,
+            primitive_indices_range,
+        );
+        assert_eq!(indices_ranges.len(), 3);
+        assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
+        assert_eq!(indices_ranges[1], Range { start: 6, end: 10 });
+        assert_eq!(indices_ranges[2], Range { start: 12, end: 20 });
     }
 }

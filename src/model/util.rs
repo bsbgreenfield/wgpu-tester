@@ -50,14 +50,6 @@ pub(super) fn get_primitive_index_data(
         end: indices_buffer_view.length() + indices_buffer_view.offset(),
     };
 
-    // case 1: the range specified by this buffer has zero overlap with any of the ranges in sbd
-    // case 2: the range specified
-    let mut range_iter = scene_buffer_data
-        .index_ranges
-        .clone()
-        .into_iter()
-        .peekable();
-
     let indices_bytes = &scene_buffer_data.main_buffer_data[indices_buffer_view.offset()
         ..(indices_buffer_view.length() + indices_buffer_view.offset())];
 

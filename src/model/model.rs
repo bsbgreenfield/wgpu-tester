@@ -1,3 +1,4 @@
+use super::util::InitializationError;
 use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use crate::scene::scene::GScene;
 use crate::scene::scene::SceneBufferData;
@@ -46,6 +47,37 @@ impl GPrimitive {
             indices_offset,
             indices_length,
         })
+    }
+
+    pub(super) fn init(
+        &mut self,
+        scene_buffer_data: &SceneBufferData,
+    ) -> Result<(), InitializationError> {
+        // upon creation, this primitive will have stored its offset and length relative to the
+        // main byte buffer. Also at this stage, scene_buffer_data has stored a list of ranges that
+        // need to be composed into the final index buffer. We need to translate the indices
+        // relative to the main buffer to indices relative to a buffer which would contain only the
+        // ranges specified in scene_buffer_data.
+        // sbd: [30..40, 50..60, 90..120]
+        // primitive: 95..110
+        // step 1: loop through the ranges until we find the range that holds the data for this
+        // primitive, adding the lengths of each range we pass
+        let mut relative_buffer_offset = 0;
+        for index_range in scene_buffer_data.index_ranges.iter() {
+            if self.indices_offset as usize > index_range.end {
+                relative_buffer_offset += index_range.len();
+            } else {
+                relative_buffer_offset += self.indices_offset as usize - index_range.start;
+                // paranoid?
+                if (self.indices_offset + self.indices_length) as usize > index_range.end {
+                    return Err(InitializationError::SceneInitializationError);
+                }
+                break;
+            }
+        }
+
+        self.indices_offset = relative_buffer_offset as u32;
+        Ok(())
     }
 }
 

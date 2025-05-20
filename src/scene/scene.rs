@@ -4,6 +4,7 @@ use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
+use std::ops::Range;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
@@ -272,6 +273,7 @@ struct VertexData {
 }
 struct IndexData {
     indices: Vec<u16>,
+    index_ranges: Vec<Range<usize>>,
     index_buffer: Option<wgpu::Buffer>,
 }
 
