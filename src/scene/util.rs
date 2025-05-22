@@ -5,25 +5,36 @@ use crate::model::{
 
 use super::scene::*;
 use gltf::Node;
+impl GScene {
+    pub fn print_transforms(&self) {
+        let mut lt = self.instance_data.local_transform_data.iter();
+        for (i, m) in self.models.iter().enumerate() {
+            println!("MODEL {i} ---------------------------------------");
+            for (idx, _) in m.mesh_instances.iter().enumerate() {
+                println!("MESH {idx} ----------------------------------");
+                for _ in 0..m.mesh_instances[idx] {
+                    let maybet = lt.next();
+                    if let Some(t) = maybet {
+                        println!("            {t:?}");
+                    }
+                }
+            }
+        }
+    }
+}
 pub(super) fn find_meshes(
     root_node: &Node,
     mut scene_mesh_data: SceneMeshData,
-    mut base_translation: [[f32; 4]; 4],
+    mut base_translation: cgmath::Matrix4<f32>,
 ) -> SceneMeshData {
     'block: {
-        let cg_base = cgmath::Matrix4::<f32>::from(base_translation);
         let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
-        base_translation = (cg_base * cg_trans).into();
-        //for a in base_translation.iter_mut() {
-        //    for b in a.iter_mut() {
-        //        *b = (*b * 10000.0).round() / 10000.0;
-        //    }
-        //}
+        base_translation = base_translation * cg_trans;
         if let Some(mesh) = root_node.mesh() {
             // this is an instance of a mesh. Push the current base translation
             let local_transform: LocalTransform = LocalTransform {
                 model_index: 0,
-                transform_matrix: base_translation,
+                transform_matrix: base_translation.into(),
             };
             scene_mesh_data
                 .transformation_matrices

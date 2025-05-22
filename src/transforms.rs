@@ -6,3 +6,11 @@ pub const fn translation(x: f32, y: f32, z: f32) -> [[f32; 4]; 4] {
         [x, y, z, 1.0],
     ]
 }
+pub const fn scale(scale: f32) -> [[f32; 4]; 4] {
+    [
+        [scale, 0.0, 0.0, 0.0],
+        [0.0, scale, 0.0, 0.0],
+        [0.0, 0.0, scale, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+}

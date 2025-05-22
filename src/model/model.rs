@@ -49,21 +49,17 @@ impl GPrimitive {
         })
     }
 
-    pub(super) fn init(
+    pub(super) fn set_primitive_offset(
         &mut self,
-        scene_buffer_data: &SceneBufferData,
+        index_ranges: &Vec<Range<usize>>,
     ) -> Result<(), InitializationError> {
         // upon creation, this primitive will have stored its offset and length relative to the
         // main byte buffer. Also at this stage, scene_buffer_data has stored a list of ranges that
         // need to be composed into the final index buffer. We need to translate the indices
         // relative to the main buffer to indices relative to a buffer which would contain only the
         // ranges specified in scene_buffer_data.
-        // sbd: [30..40, 50..60, 90..120]
-        // primitive: 95..110
-        // step 1: loop through the ranges until we find the range that holds the data for this
-        // primitive, adding the lengths of each range we pass
         let mut relative_buffer_offset = 0;
-        for index_range in scene_buffer_data.index_ranges.iter() {
+        for index_range in index_ranges.iter() {
             if self.indices_offset as usize > index_range.end {
                 relative_buffer_offset += index_range.len();
             } else {
@@ -76,7 +72,8 @@ impl GPrimitive {
             }
         }
 
-        self.indices_offset = relative_buffer_offset as u32;
+        self.indices_offset = (relative_buffer_offset / 2) as u32;
+        self.indices_length = self.indices_length / 2;
         Ok(())
     }
 }
@@ -119,10 +116,19 @@ impl GMesh {
     /// this function increases the offset of all primitive vertex and index data in the mesh.
     /// This is needed for gltf file merging, as the scene to which this mesh belongs is being
     /// appended to a list of vertices and indices
-    pub fn update_primitive_offsets(&mut self, vertex_count: u32, index_count: u32) {
+    pub fn update_primitive_offsets_during_merge(&mut self, vertex_count: u32, index_count: u32) {
         for primitive in self.primitives.iter_mut() {
             primitive.vertices_offset += vertex_count;
             primitive.indices_offset += index_count;
+        }
+    }
+
+    pub fn set_primitive_offsets(&mut self, index_ranges: &Vec<Range<usize>>) {
+        for primitive in self.primitives.iter_mut() {
+            let result = primitive.set_primitive_offset(index_ranges);
+            if result.is_err() {
+                panic!("error initializing primitives");
+            }
         }
     }
 }

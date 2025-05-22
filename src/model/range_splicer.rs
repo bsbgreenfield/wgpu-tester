@@ -10,12 +10,17 @@ enum IndexResult {
     FullyCover,
     LeftOverlap,
     RightOverlap,
+    ExactlyEqual,
 }
 fn get_index_result(
     current_range: &Range<usize>,
     primitive_indices_range: &Range<usize>,
 ) -> IndexResult {
-    if primitive_indices_range.start > current_range.end + 1 {
+    if primitive_indices_range.start == current_range.start
+        && primitive_indices_range.end == primitive_indices_range.end
+    {
+        IndexResult::ExactlyEqual
+    } else if primitive_indices_range.start > current_range.end + 1 {
         IndexResult::StrictlyGreater
     } else if primitive_indices_range.end + 1 < current_range.start {
         IndexResult::StrictlyLess
@@ -42,6 +47,7 @@ fn get_index_result(
     {
         IndexResult::FullyCover
     } else {
+        println!("{:?}, {:?}", primitive_indices_range, current_range);
         panic!()
     }
 }
@@ -57,17 +63,24 @@ fn splice_range(
     range_vec.splice(start_idx..end_idx, vec![left..right]);
 }
 
-fn define_index_ranges(
+pub(super) fn define_index_ranges(
     range_vec: &mut Vec<Range<usize>>,
-    range_iter: &mut Peekable<IntoIter<Range<usize>>>,
-    primitive_indices_range: std::ops::Range<usize>,
+    primitive_indices_range: &std::ops::Range<usize>,
 ) {
+    if range_vec.is_empty() {
+        range_vec.push(primitive_indices_range.clone());
+        return;
+    }
     let mut current_idx: usize = 0;
+    let mut range_iter = range_vec.clone().into_iter().peekable();
     'outer: loop {
         if let Some(current_range) = range_iter.next() {
             let index_result = get_index_result(&current_range, &primitive_indices_range);
             use IndexResult::*;
             match index_result {
+                ExactlyEqual => {
+                    break 'outer;
+                }
                 // if this range is strictly greater than the current range, and this is the last
                 // range, add a new range to the end, unless we can combine it into a continuous
                 // new range
@@ -151,7 +164,7 @@ fn define_index_ranges(
                 }
             }
         } else {
-            panic!();
+            return;
         }
         current_idx += 1;
     }
@@ -166,13 +179,8 @@ mod tests {
         let mut indices_ranges = Vec::<Range<usize>>::new();
         indices_ranges.push(0..4);
         indices_ranges.push(7..10);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 12, end: 15 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
 
         assert_eq!(indices_ranges.len(), 3);
         assert_eq!(
@@ -186,13 +194,8 @@ mod tests {
         let mut indices_ranges = Vec::<Range<usize>>::new();
         indices_ranges.push(0..4);
         indices_ranges.push(7..10);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 8, end: 15 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         println!("{:?}", indices_ranges);
         assert_eq!(indices_ranges.len(), 2);
         assert_eq!(indices_ranges[0], Range { start: 0, end: 4 });
@@ -204,13 +207,8 @@ mod tests {
         let mut indices_ranges = Vec::<Range<usize>>::new();
         indices_ranges.push(0..4);
         indices_ranges.push(7..10);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 10, end: 15 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 2);
         assert_eq!(indices_ranges[0], Range { start: 0, end: 4 });
         assert_eq!(indices_ranges[1], Range { start: 7, end: 15 });
@@ -221,13 +219,8 @@ mod tests {
         indices_ranges.push(2..4);
         indices_ranges.push(8..10);
         indices_ranges.push(12..15);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 3, end: 13 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 1);
         assert_eq!(indices_ranges[0], Range { start: 2, end: 15 });
     }
@@ -237,13 +230,8 @@ mod tests {
         let mut indices_ranges = Vec::<Range<usize>>::new();
         indices_ranges.push(2..4);
         indices_ranges.push(7..10);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 0, end: 15 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 1);
         assert_eq!(indices_ranges[0], Range { start: 0, end: 15 });
     }
@@ -253,13 +241,8 @@ mod tests {
         indices_ranges.push(2..4);
         indices_ranges.push(10..18);
         indices_ranges.push(22..25);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 6, end: 20 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 3);
         assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
         assert_eq!(indices_ranges[1], Range { start: 6, end: 20 });
@@ -272,13 +255,8 @@ mod tests {
         indices_ranges.push(2..4);
         indices_ranges.push(8..10);
         indices_ranges.push(12..15);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 6, end: 9 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 3);
         assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
         assert_eq!(indices_ranges[1], Range { start: 6, end: 10 });
@@ -289,13 +267,8 @@ mod tests {
         let mut indices_ranges = Vec::<Range<usize>>::new();
         indices_ranges.push(2..4);
         indices_ranges.push(12..20);
-        let mut range_iter = indices_ranges.clone().into_iter().peekable();
         let primitive_indices_range = Range { start: 6, end: 10 };
-        define_index_ranges(
-            &mut indices_ranges,
-            &mut range_iter,
-            primitive_indices_range,
-        );
+        define_index_ranges(&mut indices_ranges, &primitive_indices_range);
         assert_eq!(indices_ranges.len(), 3);
         assert_eq!(indices_ranges[0], Range { start: 2, end: 4 });
         assert_eq!(indices_ranges[1], Range { start: 6, end: 10 });

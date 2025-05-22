@@ -1,3 +1,4 @@
+use super::range_splicer;
 use super::vertex::ModelVertex;
 use crate::scene::scene::*;
 use gltf::accessor::DataType;
@@ -5,11 +6,8 @@ use gltf::buffer::View;
 use gltf::{Accessor, Gltf};
 use std::fmt::Debug;
 use std::fs;
-use std::iter::Peekable;
-use std::ops::{Range, RangeBounds};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::vec::IntoIter;
 
 #[derive(Debug)]
 pub enum GltfErrors {
@@ -28,12 +26,6 @@ pub enum InitializationError<'a> {
     SceneInitializationError,
 }
 
-// each Model has exactly one node tree
-// in order to draw itself, it traverses this tree
-// creating the required buffers
-
-// used to gather the models
-
 pub(super) fn get_primitive_index_data(
     indices_accessor: &Accessor,
     scene_buffer_data: &mut SceneBufferData,
@@ -45,29 +37,18 @@ pub(super) fn get_primitive_index_data(
     }
     let indices_buffer_view = indices_accessor.view().ok_or(GltfErrors::NoView)?;
 
+    let total_byte_offset = indices_buffer_view.offset() + indices_accessor.offset();
     let primitive_indices_range = std::ops::Range::<usize> {
-        start: indices_buffer_view.offset(),
-        end: indices_buffer_view.length() + indices_buffer_view.offset(),
+        start: indices_buffer_view.offset() + indices_accessor.offset(),
+        end: total_byte_offset + (indices_accessor.count() * 2),
     };
-
-    let indices_bytes = &scene_buffer_data.main_buffer_data[indices_buffer_view.offset()
-        ..(indices_buffer_view.length() + indices_buffer_view.offset())];
-
-    // get a [u16] slice from the u8 data
-    let indices_u16 = bytemuck::cast_slice::<u8, u16>(indices_bytes);
-
-    // the offset within our composed index buffer is equal to the current length of
-    // of the buffer (of u16s) * 2 (2 bytes per u16 element);
-    // however, we are NOT multiplying indices len by 2, becuase we acutally need that number
-    // as is for render_pass.draw_indexed.
-    let primitive_indices_offset = scene_buffer_data.index_buf.len();
-    let primitive_indices_len = indices_u16.len();
-
-    scene_buffer_data.index_buf.extend(indices_u16);
-
+    range_splicer::define_index_ranges(
+        &mut scene_buffer_data.index_ranges,
+        &primitive_indices_range,
+    );
     Ok((
-        primitive_indices_offset as u32,
-        primitive_indices_len as u32,
+        primitive_indices_range.start as u32,
+        (primitive_indices_range.end - primitive_indices_range.start) as u32,
     ))
 }
 
@@ -206,7 +187,10 @@ pub fn load_gltf(
     // only use the first scene for now
     let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
     let buffer_data_rc = Rc::new(buffer_data);
-    let root_node_ids: Vec<usize> = scene.nodes().map(|n| n.index()).collect();
+    let mesh_node_iter = scene
+        .nodes()
+        .filter(|n| n.mesh().is_some() || n.children().len() != 0);
+    let root_node_ids: Vec<usize> = mesh_node_iter.map(|n| n.index()).collect();
     let scene = GScene::new(
         gltf.nodes(),
         root_node_ids,
@@ -216,6 +200,6 @@ pub fn load_gltf(
     );
     match scene {
         Ok(scene) => return Ok(scene),
-        Err(_) => panic!(),
+        Err(err) => panic!("{:?}", err),
     }
 }

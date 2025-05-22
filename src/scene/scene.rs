@@ -15,7 +15,7 @@ use super::instances::InstanceData;
 pub struct SceneBufferData {
     pub main_buffer_data: Rc<Vec<u8>>,
     pub vertex_buf: Vec<ModelVertex>,
-    pub index_buf: Vec<u16>,
+    pub index_buf: Option<Vec<u16>>,
     pub index_ranges: Vec<std::ops::Range<usize>>,
 }
 impl SceneBufferData {
@@ -23,8 +23,23 @@ impl SceneBufferData {
         Self {
             main_buffer_data,
             vertex_buf: Vec::new(),
-            index_buf: Vec::new(),
+            index_buf: None,
             index_ranges: Vec::new(),
+        }
+    }
+
+    fn set_index_data(&mut self) {
+        println!("{:?} final index ranges", self.index_ranges);
+        let mut index_buf = Vec::<u16>::new();
+        for index_range in self.index_ranges.iter() {
+            let indices_bytes = &self.main_buffer_data[index_range.start..index_range.end];
+            let indices_u16 = bytemuck::cast_slice::<u8, u16>(indices_bytes);
+            index_buf.extend(indices_u16);
+        }
+        if index_buf.is_empty() {
+            return;
+        } else {
+            self.index_buf = Some(index_buf);
         }
     }
 }
@@ -46,10 +61,10 @@ impl SceneMeshData {
 
 pub struct GScene {
     pub models: Vec<GModel>,
-    pub vertex_data: VertexData,
-    pub index_data: IndexData,
+    vertex_data: VertexData,
+    index_data: IndexData,
     pub camera: Camera,
-    pub instance_data: InstanceData,
+    pub(super) instance_data: InstanceData,
 }
 
 impl GScene {
@@ -97,8 +112,9 @@ impl GScene {
                 mesh_instances: scene_mesh_data.mesh_instances.clone(),
             });
         }
+        scene_buffer_data.set_index_data();
 
-        let (vertex_data, index_data) = GScene::new_data(scene_buffer_data);
+        let (vertex_data, index_data) = GScene::new_data(scene_buffer_data, &mut models);
 
         let camera = get_camera_default(aspect_ratio, device);
 
@@ -146,7 +162,7 @@ impl GScene {
         // vertex data and index data that is being stored in their primitives
         for model in scene2.models.iter_mut() {
             for mesh in model.meshes.iter_mut() {
-                mesh.update_primitive_offsets(vertex_count, index_count);
+                mesh.update_primitive_offsets_during_merge(vertex_count, index_count);
             }
         }
         scene1.models.extend(scene2.models);
@@ -249,9 +265,23 @@ impl GScene {
         }
         (vertex_count, index_count)
     }
-    fn new_data(scene_buffer_data: SceneBufferData) -> (VertexData, IndexData) {
+    fn new_data(
+        scene_buffer_data: SceneBufferData,
+        models: &mut Vec<GModel>,
+    ) -> (VertexData, IndexData) {
         let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
-        let index_data = IndexData::from_data(scene_buffer_data.index_buf);
+
+        // adjust the offset values of the primitives to match the new, tightly packed, index data
+        for model in models.iter_mut() {
+            for mesh in model.meshes.iter_mut() {
+                mesh.set_primitive_offsets(&scene_buffer_data.index_ranges);
+            }
+        }
+        let index_data = IndexData::from_data(
+            scene_buffer_data
+                .index_buf
+                .expect("index data should be initialized"),
+        );
         (vertex_data, index_data)
     }
 
@@ -273,7 +303,6 @@ struct VertexData {
 }
 struct IndexData {
     indices: Vec<u16>,
-    index_ranges: Vec<Range<usize>>,
     index_buffer: Option<wgpu::Buffer>,
 }
 
@@ -293,6 +322,7 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
         });
         self.vertex_buffer = Some(vertex_buffer);
     }
+
     fn from_data(data: Vec<ModelVertex>) -> Self {
         VertexData {
             vertices: data,
@@ -302,12 +332,9 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
 }
 
 impl SceneData<Vec<u16>> for IndexData {
-    fn extend(mut self, other: Self) -> Self {
+    fn extend(mut self, mut other: Self) -> Self {
         self.indices.extend(other.indices);
-        Self {
-            indices: self.indices,
-            index_buffer: None,
-        }
+        self
     }
     fn init(&mut self, device: &wgpu::Device) {
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -318,7 +345,7 @@ impl SceneData<Vec<u16>> for IndexData {
         self.index_buffer = Some(index_buffer);
     }
     fn from_data(data: Vec<u16>) -> Self {
-        IndexData {
+        Self {
             indices: data,
             index_buffer: None,
         }

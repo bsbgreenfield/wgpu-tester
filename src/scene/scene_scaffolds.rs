@@ -1,4 +1,7 @@
-use crate::model::util::{load_gltf, InitializationError};
+use crate::{
+    model::util::{load_gltf, InitializationError},
+    transforms,
+};
 
 use super::scene::GScene;
 
@@ -34,7 +37,8 @@ impl<'a> SceneScaffold<'a> {
             }
         }
         let mut maybe_return_scene: Option<GScene> = None;
-        match gltfs.len() {
+        let no_scenes = gltfs.len().clone();
+        match no_scenes {
             0 => return Err(InitializationError::SceneInitializationError),
             1 => {
                 let _ = maybe_return_scene.insert(gltfs.remove(0));
@@ -42,7 +46,9 @@ impl<'a> SceneScaffold<'a> {
             _ => {
                 let mut iter = gltfs.into_iter();
                 let mut s = iter.next().unwrap();
-                for _ in 0..iter.len() - 1 {
+                println!("for _ in 1..{}", iter.len());
+                for _ in 1..no_scenes {
+                    println!("merging???????");
                     s = GScene::merge(s, iter.next().unwrap())?;
                 }
                 let _ = maybe_return_scene.insert(s);
@@ -77,14 +83,54 @@ pub const CUBE: SceneScaffold = SceneScaffold {
     global_transforms: &[],
     instances: &[],
 };
+pub const FOX: SceneScaffold = SceneScaffold {
+    file_paths: &["fox"],
+    global_transforms: &[],
+    instances: &[],
+};
+pub const TRUCK: SceneScaffold = SceneScaffold {
+    file_paths: &["milk-truck"],
+    global_transforms: &[],
+    instances: &[],
+};
 pub const BRAIN: SceneScaffold = SceneScaffold {
     file_paths: &["brain-stem"],
     global_transforms: &[],
     instances: &[],
 };
+pub const DRAGON: SceneScaffold = SceneScaffold {
+    file_paths: &["dragon"],
+    global_transforms: &[],
+    instances: &[],
+};
+const fn buggy_shrink(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
+    ScaffoldGlobalTransforms {
+        instance_index,
+        model_index,
+        transform: transforms::scale(0.02),
+    }
+}
+const fn move_right(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
+    ScaffoldGlobalTransforms {
+        instance_index,
+        model_index,
+        transform: transforms::translation(5.0, 0.0, 0.0),
+    }
+}
 pub const BUGGY: SceneScaffold = SceneScaffold {
     file_paths: &["buggy"],
-    global_transforms: &[],
+    global_transforms: &[buggy_shrink(0, 0)],
+    instances: &[],
+};
+pub const TRUCK_BOX: SceneScaffold = SceneScaffold {
+    file_paths: &["milk-truck", "box"],
+    global_transforms: &[move_right(0, 1)],
+    instances: &[],
+};
+
+pub const BUGGY_BOX: SceneScaffold = SceneScaffold {
+    file_paths: &["buggy", "milk-truck"],
+    global_transforms: &[buggy_shrink(0, 0), move_right(0, 1)],
     instances: &[],
 };
 //ScaffoldModelInstances {
