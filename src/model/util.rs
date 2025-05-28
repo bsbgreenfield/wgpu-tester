@@ -191,14 +191,14 @@ pub fn load_gltf(
         .nodes()
         .filter(|n| n.mesh().is_some() || n.children().len() != 0);
     let root_node_ids: Vec<usize> = mesh_node_iter.map(|n| n.index()).collect();
-    let scene = GScene::new(
+    let gscene = GScene::new(
         gltf.nodes(),
         root_node_ids,
         buffer_data_rc,
         device,
         aspect_ratio,
     );
-    match scene {
+    match gscene {
         Ok(scene) => return Ok(scene),
         Err(err) => panic!("{:?}", err),
     }

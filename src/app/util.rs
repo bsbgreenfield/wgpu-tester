@@ -109,6 +109,6 @@ pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
     //gscene.add_model_instances(1, vec![offset_3.into()]);
     //gscene.init(&app_config.device);
     //gscene
-    let a = BRAIN.create(&app_config.device, aspect_ratio).unwrap();
+    let a = TRUCK.create(&app_config.device, aspect_ratio).unwrap();
     a
 }
