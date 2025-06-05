@@ -36,7 +36,7 @@ impl<'a> SceneScaffold<'a> {
         let gltf_data: GltfData = GltfLoader::load_gltf2(self.file_paths[0])
             .map_err(|_| InitializationError::SceneInitializationError)?; // onyl one file path??
         let scene_data = GSceneData::new(gltf_data);
-        let scene = scene_data.build_scene(device, aspect_ratio);
+        let scene = scene_data.build_scene_init(device, aspect_ratio);
         Ok(scene)
     }
     //TODO: add better error handling

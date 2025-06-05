@@ -7,6 +7,7 @@ use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
 use std::rc::Rc;
+use std::thread::park_timeout;
 use wgpu::core::device;
 use wgpu::util::DeviceExt;
 
@@ -66,7 +67,73 @@ pub struct GScene2 {
     vertex_data: VertexData,
     index_data: IndexData,
     instance_data: InstanceData,
-    camera: Camera,
+    camera: Option<Camera>,
+}
+
+impl GScene2 {
+    pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
+        self.vertex_data.init(device);
+        self.index_data.init(device);
+        self.instance_data.init(device);
+        let camera = get_camera_default(aspect_ratio, device);
+        self.camera = Some(camera); // TODO: allow for adding a custom camera
+    }
+    pub fn get_camera_buf(&self) -> &wgpu::Buffer {
+        &self.camera.as_ref().unwrap().camera_buffer
+    }
+
+    pub fn get_global_buf(&self) -> Result<&wgpu::Buffer, InitializationError> {
+        if self.instance_data.global_transform_buffer.is_some() {
+            return Ok(self.instance_data.global_transform_buffer.as_ref().unwrap());
+        }
+        Err(InitializationError::InstanceDataInitializationError(
+            "Global buffer has not been initialized! Please call InstanceData.init() when your data is ready",
+        ))
+    }
+    pub fn get_camera_bind_group(
+        &self,
+        device: &wgpu::Device,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        if let Some(camera) = &self.camera {
+            get_camera_bind_group(&camera.camera_buffer, device)
+        } else {
+            panic!("no camera")
+        }
+    }
+    pub fn get_camera_uniform_data(&self) -> [[f32; 4]; 4] {
+        self.camera.as_ref().unwrap().camera_uniform.view_proj
+    }
+    pub fn update_camera_pos(&mut self, x: f32, y: f32, z: f32) {
+        self.camera
+            .as_mut()
+            .unwrap()
+            .update_position(cgmath::point3(x, y, z));
+    }
+    pub fn get_speed(&self) -> f32 {
+        return self.camera.as_ref().unwrap().speed;
+    }
+    pub fn get_vertex_buffer(&self) -> &Option<wgpu::Buffer> {
+        return &self.vertex_data.vertex_buffer;
+    }
+    pub fn get_local_transform_buffer(&self) -> &Option<wgpu::Buffer> {
+        &self.instance_data.local_transform_buffer
+    }
+    pub fn get_global_transform_data(&self) -> &Vec<[[f32; 4]; 4]> {
+        &self.instance_data.global_transform_data
+    }
+    pub fn get_global_transform_buffer(&self) -> &Option<wgpu::Buffer> {
+        &self.instance_data.global_transform_buffer
+    }
+    pub fn get_index_buffer(&self) -> &Option<wgpu::Buffer> {
+        return &self.index_data.index_buffer;
+    }
+    pub fn get_model_instances(&self) -> &Vec<usize> {
+        &self.instance_data.model_instances
+    }
+    pub fn update_global_transform_x(&mut self, instance_idx: usize, new_transform: [[f32; 4]; 4]) {
+        self.instance_data
+            .update_global_transform_x(instance_idx, new_transform);
+    }
 }
 
 /// an uninitialized scene
@@ -83,18 +150,23 @@ impl GSceneData {
         todo!()
     }
 
-    pub fn build_scene(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene2 {
-        let instance_data = InstanceData::default_from_scene(&self);
-        let vertex_data = VertexData::from_data(self.vertex_vec, device);
-        let index_data = IndexData::from_data(self.index_vec, device);
+    pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene2 {
+        let mut scene = self.build_scene_uninit();
+        scene.init(device, aspect_ratio);
+        scene
+    }
+    pub fn build_scene_uninit(self) -> GScene2 {
+        let instance_data =
+            InstanceData::default_from_scene(self.models.len(), self.local_transforms);
+        let vertex_data = VertexData::from_data(self.vertex_vec);
+        let index_data = IndexData::from_data(self.index_vec);
 
-        let camera = get_camera_default(aspect_ratio, device);
         GScene2 {
             models: self.models,
             vertex_data,
             instance_data,
             index_data,
-            camera,
+            camera: None,
         }
     }
 
@@ -140,6 +212,10 @@ impl GSceneData {
         for model in models.iter() {
             for mesh in model.meshes.iter() {
                 for primitive in mesh.primitives.iter() {
+                    println!(
+                        "{:?}, {:?}",
+                        primitive.indices_offset, primitive.indices_length
+                    );
                     let primitive_range = primitive.indices_offset as usize
                         ..(primitive.indices_offset + primitive.indices_length) as usize;
                     crate::model::range_splicer::define_index_ranges(
@@ -219,7 +295,8 @@ impl GScene {
         }
         scene_buffer_data.set_index_data();
 
-        let (vertex_data, index_data) = GScene::new_data(scene_buffer_data, &mut models);
+        let (vertex_data, index_data) =
+            (VertexData::from_data(vec![]), IndexData::from_data(vec![]));
 
         let camera = get_camera_default(aspect_ratio, device);
 
@@ -397,7 +474,7 @@ impl GScene {
 }
 
 trait SceneData<T> {
-    fn from_data(data: T, device: &wgpu::Device) -> Self;
+    fn from_data(data: T) -> Self;
     fn init(&mut self, device: &wgpu::Device);
     fn extend(self, other: Self) -> Self;
 }
@@ -428,13 +505,11 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
         self.vertex_buffer = Some(vertex_buffer);
     }
 
-    fn from_data(data: Vec<ModelVertex>, device: &wgpu::Device) -> Self {
-        let mut vd = VertexData {
+    fn from_data(data: Vec<ModelVertex>) -> Self {
+        VertexData {
             vertices: data,
             vertex_buffer: None,
-        };
-        vd.init(device);
-        vd
+        }
     }
 }
 
@@ -451,12 +526,10 @@ impl SceneData<Vec<u16>> for IndexData {
         });
         self.index_buffer = Some(index_buffer);
     }
-    fn from_data(data: Vec<u16>, device: &wgpu::Device) -> Self {
-        let mut id = Self {
+    fn from_data(data: Vec<u16>) -> Self {
+        Self {
             indices: data,
             index_buffer: None,
-        };
-        id.init(device);
-        id
+        }
     }
 }

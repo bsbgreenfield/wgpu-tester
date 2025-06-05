@@ -1,4 +1,5 @@
 use super::util::calculate_model_mesh_offsets;
+use cgmath::SquareMatrix;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
 
@@ -32,14 +33,22 @@ impl InstanceData {
     }
 
     /// create Instance data with one instance of each model, each positioned at the origin
-    pub fn default_from_scene(scene_data: &GSceneData) -> Self {
-        let model_instances: Vec<usize> = scene_data.models.iter().map(|model| 1).collect();
-        let local_transform_data = scene_data.local_;
+    pub fn default_from_scene(
+        model_count: usize,
+        local_transform_data: Vec<LocalTransform>,
+    ) -> Self {
+        let model_instances: Vec<usize> = (0..model_count).into_iter().map(|_| 1).collect();
+        let global_transform_data: Vec<[[f32; 4]; 4]> = (0..model_count)
+            .into_iter()
+            .map(|_| cgmath::Matrix4::<f32>::identity().into())
+            .collect();
+        let instance_local_offsets = vec![0];
+
         Self {
             model_instances,
-            local_transform_buffer,
+            local_transform_buffer: None,
             local_transform_data,
-            global_transform_buffer,
+            global_transform_buffer: None,
             global_transform_data,
             instance_local_offsets,
         }

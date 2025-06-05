@@ -168,21 +168,25 @@ pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoa
 
     // step 2: assert that there is only a single binary file and grab it
     let entries: ReadDir = fs::read_dir(&dir_path).map_err(|e| GltfFileLoadError::IoErr(e))?;
-    for entry in entries {
+    'outer: for entry in entries {
         if bin_file.is_some() {
             return Err(GltfFileLoadError::MultipleBinaryFiles);
         }
         if let Ok(dir_entry) = entry {
+            println!("{:?}", dir_entry.path().extension());
             if dir_entry
                 .path()
                 .extension()
                 .is_some_and(|ext| ext.to_str().is_some_and(|ext_str| ext_str == "bin"))
             {
                 bin_file = Some(dir_entry.path());
+                break 'outer;
             }
         } else {
             return Err(GltfFileLoadError::BadFile);
         }
     }
-    Ok((gltf_file.unwrap(), bin_file.unwrap(), None))
+    let gltf = gltf_file.expect("gltf");
+    let bin = bin_file.expect("bin");
+    Ok((gltf, bin, None))
 }

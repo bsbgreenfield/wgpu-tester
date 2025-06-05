@@ -1,15 +1,20 @@
 use super::util::InitializationError;
 use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
+use crate::loader::loader::GModel2;
 use crate::model::util::get_primitive_data;
 use crate::model::vertex::ModelVertex;
-use crate::scene::scene::GScene;
 use crate::scene::scene::SceneBufferData;
+use crate::scene::scene::{GScene, GScene2};
 use gltf::accessor::DataType;
-use gltf::json::serialize::to_vec;
 use gltf::{Mesh, Primitive};
 use std::ops::{self, Range};
-use std::primitive;
 use std::rc::Rc;
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AccessorDataType {
+    Vec3F32,
+    U16,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct GPrimitive2 {
@@ -47,10 +52,10 @@ impl GPrimitive2 {
         let indices_accessor = primitive.indices().unwrap();
 
         let (position_offset, position_length) =
-            get_primitive_data(&position_accessor, DataType::F32)?;
-        let (normal_offset, normal_length) = get_primitive_data(&normals_accessor, DataType::F32)?;
+            get_primitive_data(&position_accessor, AccessorDataType::Vec3F32)?;
+        let (normal_offset, normal_length) = get_primitive_data(&normals_accessor, AccessorDataType::Vec3F32)?;
         let (indices_offset, indices_length) =
-            get_primitive_data(&indices_accessor, DataType::U16)?;
+            get_primitive_data(&indices_accessor, AccessorDataType::U16)?;
         Ok(Self {
             position_offset,
             position_length,
@@ -83,6 +88,7 @@ impl GPrimitive2 {
         indices_ranges: &Vec<std::ops::Range<usize>>,
     ) -> Vec<u16> {
         let mut index_vec: Vec<u16> = Vec::new();
+        println!("{:?}", indices_ranges);
         for range in indices_ranges.iter() {
             let indices_bytes: &[u8] = &main_buffer_data[range.start..range.end];
             let indices_u16: &[u16] = bytemuck::cast_slice::<u8, u16>(indices_bytes);
@@ -272,9 +278,9 @@ pub struct GModel {
 
 pub trait GDrawModel<'a> {
     fn draw_gmesh(&mut self, mesh: &'a GMesh);
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>);
-    fn draw_gmodel(&mut self, model: &'a GModel, instances: u32, num_mesh_instances: u32) -> u32;
-    fn draw_scene(&mut self, scene: &'a GScene);
+    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh2, instances: Range<u32>);
+    fn draw_gmodel(&mut self, model: &'a GModel2, instances: u32, num_mesh_instances: u32) -> u32;
+    fn draw_scene(&mut self, scene: &'a GScene2);
 }
 
 impl<'a, 'b> GDrawModel<'b> for wgpu::RenderPass<'a>
@@ -282,18 +288,20 @@ where
     'b: 'a,
 {
     fn draw_gmesh(&mut self, mesh: &'b GMesh) {}
-    fn draw_gmesh_instanced(&mut self, mesh: &'b GMesh, instances: Range<u32>) {
+    fn draw_gmesh_instanced(&mut self, mesh: &'b GMesh2, instances: Range<u32>) {
         for primitive in mesh.primitives.iter() {
+            let (indices_offset, indices_length) = primitive.initialized_index_offset_len.unwrap();
+            let (vertices_offset, _) = primitive.initialized_vertex_offset_len.unwrap();
             self.draw_indexed(
-                primitive.indices_offset..(primitive.indices_length + primitive.indices_offset),
-                primitive.vertices_offset as i32,
+                indices_offset..(indices_length + indices_offset),
+                vertices_offset as i32,
                 instances.clone(),
             );
         }
     }
     fn draw_gmodel(
         &mut self,
-        model: &'b GModel,
+        model: &'b GModel2,
         model_offset: u32,
         model_instance_count: u32,
     ) -> u32 {
@@ -306,7 +314,7 @@ where
         mesh_offset
     }
 
-    fn draw_scene(&mut self, scene: &'b GScene) {
+    fn draw_scene(&mut self, scene: &'b GScene2) {
         let mut offset: u32 = 0;
         for (idx, model) in scene.models.iter().enumerate() {
             offset += self.draw_gmodel(model, offset, scene.get_model_instances()[idx] as u32);

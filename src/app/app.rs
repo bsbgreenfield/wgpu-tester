@@ -66,7 +66,7 @@ impl ApplicationHandler for App<'_> {
                     )
                     .unwrap(),
             );
-            let app_state = pollster::block_on(AppState::new(window.clone()));
+            let app_state = pollster::block_on(AppState::new2(window.clone()));
             self.app_state = Some(app_state);
             self.window = Some(window.clone());
             window.request_redraw();

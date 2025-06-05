@@ -1,5 +1,6 @@
 use super::range_splicer;
 use super::vertex::ModelVertex;
+use crate::model::model::AccessorDataType;
 use crate::scene::scene::*;
 use gltf::accessor::DataType;
 use gltf::buffer::View;
@@ -75,14 +76,25 @@ fn get_bytes_from_view(
 
 pub(super) fn get_primitive_data(
     accessor: &Accessor,
-    expected_data_type: DataType,
+    expected_data_type: AccessorDataType,
 ) -> Result<(u32, u32), GltfErrors> {
-    if accessor.data_type() != expected_data_type {
-        return Err(GltfErrors::VericesError(String::from(
-            "the data type of the vertices is something other than an F32!!",
-        )));
+    match accessor.data_type() {
+       DataType::F32 => {
+        if expected_data_type != AccessorDataType::Vec3F32 {
+            return Err(GltfErrors::VericesError(String::from("Data type given is not f32!")));
+        }
+       } ,
+       DataType::U16 => {
+        if expected_data_type != AccessorDataType::U16 {
+            return Err(GltfErrors::IndicesError(String::from("Data type given is not u16!")));
+        }
+       }
+       _ => panic!("unhandled data type")
     }
-    let len = accessor.count() * 12;
+    let len = match expected_data_type {
+       AccessorDataType::U16 => accessor.count() * 2,
+       AccessorDataType::Vec3F32 => accessor.count() * 12, 
+    };
     let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
     let offset = buffer_view.offset() + accessor.offset();
     Ok((offset as u32, len as u32))

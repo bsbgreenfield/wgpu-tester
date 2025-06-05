@@ -2,8 +2,14 @@ use std::sync::Arc;
 use winit::window::Window;
 
 use crate::{
-    app::app_config::AppConfig,
-    scene::{scene::GScene, scene_scaffolds::TRUCK},
+    app::{
+        app::App,
+        app_config::{self, AppConfig},
+    },
+    scene::{
+        scene::{GScene, GScene2},
+        scene_scaffolds::{CUBE, TRUCK},
+    },
 };
 
 #[rustfmt::skip]
@@ -70,6 +76,11 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
         config,
     }
 }
+
+pub(super) fn get_scene_2(app_config: &AppConfig, aspect_ratio: f32) -> GScene2 {
+    CUBE.create2(&app_config.device, aspect_ratio).unwrap()
+}
+
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
     //let box_scene = load_gltf("box", &app_config.device, aspect_ratio).unwrap();
     //let truck_scene = load_gltf("milk-truck", &app_config.device, aspect_ratio).unwrap();

@@ -2,10 +2,10 @@ use super::app_config::AppConfig;
 use super::util;
 use crate::model::model::{GDrawModel, GlobalTransform, LocalTransform};
 use crate::model::vertex::*;
-use crate::scene::scene::GScene;
+use crate::scene::scene::{GScene, GScene2};
 use std::sync::Arc;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
-use winit::window::Window;
+use winit::window::{self, Window};
 pub struct InputController {
     pub key_d_down: bool,
     pub key_w_down: bool,
@@ -34,13 +34,13 @@ pub enum UpdateResult {
 pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    gscene: GScene,
+    gscene: GScene2,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
 }
 
 impl<'a> AppState<'a> {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new2(window: Arc<Window>) -> Self {
         let app_config: AppConfig = util::setup_config(window).await;
         let shader = app_config
             .device
@@ -48,16 +48,13 @@ impl<'a> AppState<'a> {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
-
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let gscene = util::get_scene(&app_config, aspect_ratio);
+        let gscene = util::get_scene_2(&app_config, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
-
         let (global_instance_bind_group_layout, global_instance_bind_group) =
-            AppState::setup_global_instance_bind_group(&app_config, &gscene);
+            AppState::setup_global_instance_bind_group_2(&app_config, &gscene);
         let bind_groups = vec![camera_bind_group, global_instance_bind_group];
-
         let render_pipeline_layout =
             app_config
                 .device
@@ -130,6 +127,45 @@ impl<'a> AppState<'a> {
         }
     }
 
+    fn setup_global_instance_bind_group_2(
+        app_config: &AppConfig,
+        scene: &GScene2,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let global_instance_bind_group_layout =
+            app_config
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Global bind group layout"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+        let global_instance_bind_group =
+            app_config
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &global_instance_bind_group_layout,
+                    entries: &[BindGroupEntry {
+                        binding: 1,
+                        resource: scene
+                            .get_global_buf()
+                            .expect("should be initialized")
+                            .as_entire_binding(),
+                    }],
+                    label: Some("Global bind group"),
+                });
+        (
+            global_instance_bind_group_layout,
+            global_instance_bind_group,
+        )
+    }
     fn setup_global_instance_bind_group(
         app_config: &AppConfig,
         scene: &GScene,
