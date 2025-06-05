@@ -62,9 +62,10 @@ pub enum GltfFileLoadError {
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
     nodes: gltf::iter::Nodes<'a>,
-) -> Vec<GModel2> {
+) -> (Vec<GModel2>, Vec<LocalTransform>) {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel2>::with_capacity(root_nodes_ids.len());
+    let mut local_transform_data = Vec::<LocalTransform>::new();
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
@@ -76,9 +77,10 @@ pub(super) fn load_models_from_gltf<'a>(
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
         let g_model = GModel2::new(None, meshes, model_mesh_data.mesh_instances);
+        local_transform_data.extend(model_mesh_data.transformation_matrices);
         models.push(g_model);
     }
-    models
+    (models, local_transform_data)
 }
 
 fn get_model_meshes(

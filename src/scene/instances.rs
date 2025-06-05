@@ -2,9 +2,12 @@ use super::util::calculate_model_mesh_offsets;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
 
-use crate::model::{
-    model::{GModel, GlobalTransform, LocalTransform},
-    util::InitializationError,
+use crate::{
+    model::{
+        model::{GModel, GlobalTransform, LocalTransform},
+        util::InitializationError,
+    },
+    scene::scene::{GScene2, GSceneData},
 };
 
 pub(super) struct InstanceData {
@@ -25,6 +28,20 @@ impl InstanceData {
             global_transform_buffer: None,
             global_transform_data: Vec::new(),
             instance_local_offsets: Vec::new(),
+        }
+    }
+
+    /// create Instance data with one instance of each model, each positioned at the origin
+    pub fn default_from_scene(scene_data: &GSceneData) -> Self {
+        let model_instances: Vec<usize> = scene_data.models.iter().map(|model| 1).collect();
+        let local_transform_data = scene_data.local_;
+        Self {
+            model_instances,
+            local_transform_buffer,
+            local_transform_data,
+            global_transform_buffer,
+            global_transform_data,
+            instance_local_offsets,
         }
     }
 

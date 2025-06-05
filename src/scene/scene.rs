@@ -1,11 +1,13 @@
 use super::util::*;
 use crate::loader::loader::GModel2;
+use crate::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
 use std::rc::Rc;
+use wgpu::core::device;
 use wgpu::util::DeviceExt;
 
 use super::camera::Camera;
@@ -64,6 +66,7 @@ pub struct GScene2 {
     vertex_data: VertexData,
     index_data: IndexData,
     instance_data: InstanceData,
+    camera: Camera,
 }
 
 /// an uninitialized scene
@@ -72,6 +75,7 @@ pub struct GSceneData {
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
     main_buffer_data: Vec<u8>,
+    local_transforms: Vec<LocalTransform>,
 }
 
 impl GSceneData {
@@ -79,24 +83,32 @@ impl GSceneData {
         todo!()
     }
 
-    pub fn build_scene(
-        models: Vec<GModel2>,
-        instance_data: InstanceData,
-        vertex_vec: Vec<ModelVertex>,
-        index_vec: Vec<u16>,
-    ) -> GScene2 {
-        //
-        todo!()
+    pub fn build_scene(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene2 {
+        let instance_data = InstanceData::default_from_scene(&self);
+        let vertex_data = VertexData::from_data(self.vertex_vec, device);
+        let index_data = IndexData::from_data(self.index_vec, device);
+
+        let camera = get_camera_default(aspect_ratio, device);
+        GScene2 {
+            models: self.models,
+            vertex_data,
+            instance_data,
+            index_data,
+            camera,
+        }
     }
 
-    pub fn new(mut models: Vec<GModel2>, main_buffer_data: Vec<u8>) -> Self {
-        let vertex_vec = Self::get_scene_vertex_buffer_data(&mut models, &main_buffer_data);
-        let index_vec = Self::get_scene_index_buffer_data(&mut models, &main_buffer_data);
+    pub fn new(mut gltf_data: GltfData) -> Self {
+        let vertex_vec =
+            Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
+        let index_vec =
+            Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
         Self {
-            models,
+            models: gltf_data.models,
             vertex_vec,
             index_vec,
-            main_buffer_data,
+            main_buffer_data: gltf_data.binary_data,
+            local_transforms: gltf_data.local_transforms,
         }
     }
 
@@ -358,25 +370,25 @@ impl GScene {
         }
         (vertex_count, index_count)
     }
-    fn new_data(
-        scene_buffer_data: SceneBufferData,
-        models: &mut Vec<GModel>,
-    ) -> (VertexData, IndexData) {
-        let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
+    //fn new_data(
+    //    scene_buffer_data: SceneBufferData,
+    //    models: &mut Vec<GModel>,
+    //) -> (VertexData, IndexData) {
+    //    let vertex_data = VertexData::from_data(scene_buffer_data.vertex_buf);
 
-        // adjust the offset values of the primitives to match the new, tightly packed, index data
-        for model in models.iter_mut() {
-            for mesh in model.meshes.iter_mut() {
-                mesh.set_primitive_offsets(&scene_buffer_data.index_ranges);
-            }
-        }
-        let index_data = IndexData::from_data(
-            scene_buffer_data
-                .index_buf
-                .expect("index data should be initialized"),
-        );
-        (vertex_data, index_data)
-    }
+    //    // adjust the offset values of the primitives to match the new, tightly packed, index data
+    //    for model in models.iter_mut() {
+    //        for mesh in model.meshes.iter_mut() {
+    //            mesh.set_primitive_offsets(&scene_buffer_data.index_ranges);
+    //        }
+    //    }
+    //    let index_data = IndexData::from_data(
+    //        scene_buffer_data
+    //            .index_buf
+    //            .expect("index data should be initialized"),
+    //    );
+    //    (vertex_data, index_data)
+    //}
 
     fn init_data(&mut self, device: &wgpu::Device) {
         self.vertex_data.init(device);
@@ -385,7 +397,7 @@ impl GScene {
 }
 
 trait SceneData<T> {
-    fn from_data(data: T) -> Self;
+    fn from_data(data: T, device: &wgpu::Device) -> Self;
     fn init(&mut self, device: &wgpu::Device);
     fn extend(self, other: Self) -> Self;
 }
@@ -416,11 +428,13 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
         self.vertex_buffer = Some(vertex_buffer);
     }
 
-    fn from_data(data: Vec<ModelVertex>) -> Self {
-        VertexData {
+    fn from_data(data: Vec<ModelVertex>, device: &wgpu::Device) -> Self {
+        let mut vd = VertexData {
             vertices: data,
             vertex_buffer: None,
-        }
+        };
+        vd.init(device);
+        vd
     }
 }
 
@@ -437,10 +451,12 @@ impl SceneData<Vec<u16>> for IndexData {
         });
         self.index_buffer = Some(index_buffer);
     }
-    fn from_data(data: Vec<u16>) -> Self {
-        Self {
+    fn from_data(data: Vec<u16>, device: &wgpu::Device) -> Self {
+        let mut id = Self {
             indices: data,
             index_buffer: None,
-        }
+        };
+        id.init(device);
+        id
     }
 }
