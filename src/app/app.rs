@@ -1,5 +1,3 @@
-use crate::model::util::load_gltf;
-
 use super::app_state::AppState;
 use std::sync::Arc;
 use winit::{

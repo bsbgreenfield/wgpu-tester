@@ -73,6 +73,21 @@ fn get_bytes_from_view(
     bytes
 }
 
+pub(super) fn get_primitive_data(
+    accessor: &Accessor,
+    expected_data_type: DataType,
+) -> Result<(u32, u32), GltfErrors> {
+    if accessor.data_type() != expected_data_type {
+        return Err(GltfErrors::VericesError(String::from(
+            "the data type of the vertices is something other than an F32!!",
+        )));
+    }
+    let len = accessor.count() * 12;
+    let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
+    let offset = buffer_view.offset() + accessor.offset();
+    Ok((offset as u32, len as u32))
+}
+
 /// *THIS FUNCTIONS MUTATES DATA*
 /// expand the ModelVertex buffer to include the bytes specified by this primitive
 /// by composing ModelVertex structs from bufferview data on the positions and normals
@@ -127,79 +142,4 @@ pub(super) fn get_primitive_vertex_data(
     vertex_data.extend(vertex_vec);
 
     Ok((vertex_offset, vertex_len as u32))
-}
-/// get exactly one gltf file and one bin file from the provided directory
-/// TODO: make these errors more usefull
-fn get_gltf_file(dir_path: PathBuf) -> Result<(PathBuf, PathBuf), std::io::Error> {
-    let mut gltf_file: Option<PathBuf> = None;
-    let mut bin_file: Option<PathBuf> = None;
-    let err = std::io::ErrorKind::InvalidData;
-    println!("{:?}", dir_path);
-    for entry in fs::read_dir(&dir_path)? {
-        if gltf_file.is_some() && bin_file.is_some() {
-            break;
-        }
-        if let Ok(e) = entry {
-            println!("{:?}", e);
-            let path = e.path();
-            match path.extension() {
-                Some(path_ext) => match path_ext.to_str().ok_or(err)? {
-                    "gltf" => {
-                        if gltf_file.is_some() {
-                            return Err(err.into());
-                        }
-                        gltf_file = Some(path);
-                    }
-                    "bin" => {
-                        if bin_file.is_some() {
-                            return Err(err.into());
-                        }
-                        bin_file = Some(path);
-                    }
-                    _ => {}
-                },
-                None => {}
-            }
-        }
-    }
-    if gltf_file.is_none() || bin_file.is_none() {
-        return Err(err.into());
-    } else {
-        return Ok((gltf_file.unwrap(), bin_file.unwrap()));
-    }
-}
-
-pub fn load_gltf(
-    dirname: &str,
-    device: &wgpu::Device,
-    aspect_ratio: f32,
-) -> Result<GScene, gltf::Error> {
-    let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("res")
-        .join(dirname);
-    println!("{:?}", dir_path);
-    if !dir_path.is_dir() {
-        return Err(gltf::Error::Io(std::io::ErrorKind::NotFound.into()));
-    }
-    let (gltf_file, bin) = get_gltf_file(dir_path)?;
-    let gltf = Gltf::open(gltf_file)?;
-    let buffer_data = std::fs::read(bin)?;
-    // only use the first scene for now
-    let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
-    let buffer_data_rc = Rc::new(buffer_data);
-    let mesh_node_iter = scene
-        .nodes()
-        .filter(|n| n.mesh().is_some() || n.children().len() != 0);
-    let root_node_ids: Vec<usize> = mesh_node_iter.map(|n| n.index()).collect();
-    let gscene = GScene::new(
-        gltf.nodes(),
-        root_node_ids,
-        buffer_data_rc,
-        device,
-        aspect_ratio,
-    );
-    match gscene {
-        Ok(scene) => return Ok(scene),
-        Err(err) => panic!("{:?}", err),
-    }
 }

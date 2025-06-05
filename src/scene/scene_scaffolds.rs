@@ -1,5 +1,5 @@
 use crate::{
-    model::util::{load_gltf, InitializationError},
+    loader::loader::GltfLoader, model::util::InitializationError, scene::scene::GSceneData,
     transforms,
 };
 
@@ -29,8 +29,12 @@ impl<'a> SceneScaffold<'a> {
         aspect_ratio: f32,
     ) -> Result<GScene, InitializationError> {
         let mut gltfs: Vec<GScene> = Vec::with_capacity(self.file_paths.len());
+
+        // TEST!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        let f = self.file_paths.first().unwrap();
+        let _ = GltfLoader::load_gltf2(&f);
         for file in self.file_paths {
-            let maybe_scene = load_gltf(&file, device, aspect_ratio);
+            let maybe_scene = Err(());
             match maybe_scene {
                 Ok(scene) => gltfs.push(scene),
                 Err(_) => return Err(InitializationError::SceneInitializationError),

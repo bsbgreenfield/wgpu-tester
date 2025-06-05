@@ -17,6 +17,17 @@ pub(super) struct InstanceData {
 }
 
 impl InstanceData {
+    pub fn empty() -> Self {
+        Self {
+            model_instances: Vec::new(),
+            local_transform_buffer: None,
+            local_transform_data: Vec::new(),
+            global_transform_buffer: None,
+            global_transform_data: Vec::new(),
+            instance_local_offsets: Vec::new(),
+        }
+    }
+
     pub fn new(
         model_instances: Vec<usize>,
         model_mesh_offsets: Vec<usize>,

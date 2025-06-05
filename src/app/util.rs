@@ -3,11 +3,7 @@ use winit::window::Window;
 
 use crate::{
     app::app_config::AppConfig,
-    model::{model::GlobalTransform, util::load_gltf},
-    scene::{
-        scene::GScene,
-        scene_scaffolds::{BRAIN, BUGGY, BUGGY_BOX, CUBE, DRAGON, FOX, TRUCK, TRUCK_BOX},
-    },
+    scene::{scene::GScene, scene_scaffolds::TRUCK},
 };
 
 #[rustfmt::skip]

@@ -63,7 +63,7 @@ fn splice_range(
     range_vec.splice(start_idx..end_idx, vec![left..right]);
 }
 
-pub(super) fn define_index_ranges(
+pub fn define_index_ranges(
     range_vec: &mut Vec<Range<usize>>,
     primitive_indices_range: &std::ops::Range<usize>,
 ) {

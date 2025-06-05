@@ -1,10 +1,10 @@
 use super::util::*;
+use crate::loader::loader::GModel2;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
 use cgmath::SquareMatrix;
 use gltf::Node;
-use std::ops::Range;
 use std::rc::Rc;
 use wgpu::util::DeviceExt;
 
@@ -56,6 +56,99 @@ impl SceneMeshData {
             mesh_instances: Vec::new(),
             transformation_matrices: Vec::new(),
         }
+    }
+}
+
+pub struct GScene2 {
+    pub models: Vec<GModel2>,
+    vertex_data: VertexData,
+    index_data: IndexData,
+    instance_data: InstanceData,
+}
+
+/// an uninitialized scene
+pub struct GSceneData {
+    pub models: Vec<GModel2>,
+    vertex_vec: Vec<ModelVertex>,
+    index_vec: Vec<u16>,
+    main_buffer_data: Vec<u8>,
+}
+
+impl GSceneData {
+    pub fn new_with_models(models: Vec<GModel2>, included_models: Vec<usize>) -> Self {
+        todo!()
+    }
+
+    pub fn build_scene(
+        models: Vec<GModel2>,
+        instance_data: InstanceData,
+        vertex_vec: Vec<ModelVertex>,
+        index_vec: Vec<u16>,
+    ) -> GScene2 {
+        //
+        todo!()
+    }
+
+    pub fn new(mut models: Vec<GModel2>, main_buffer_data: Vec<u8>) -> Self {
+        let vertex_vec = Self::get_scene_vertex_buffer_data(&mut models, &main_buffer_data);
+        let index_vec = Self::get_scene_index_buffer_data(&mut models, &main_buffer_data);
+        Self {
+            models,
+            vertex_vec,
+            index_vec,
+            main_buffer_data,
+        }
+    }
+
+    fn get_scene_vertex_buffer_data(
+        models: &mut Vec<GModel2>,
+        main_buffer_data: &Vec<u8>,
+    ) -> Vec<ModelVertex> {
+        let mut vertex_buffer_data = Vec::<ModelVertex>::new();
+        // loop through the models -> meshes -> primitives to build out the vertex buffer
+        let mut buffer_offset_val = 0;
+        for model in models.iter_mut() {
+            for mesh in model.meshes.iter_mut() {
+                for primitive in mesh.primitives.iter_mut() {
+                    let primitive_vertex_data = primitive.get_vertex_data(main_buffer_data);
+                    primitive.initialized_vertex_offset_len =
+                        Some((buffer_offset_val, primitive_vertex_data.len() as u32));
+                    buffer_offset_val += primitive_vertex_data.len() as u32;
+                    vertex_buffer_data.extend(primitive_vertex_data);
+                }
+            }
+        }
+        vertex_buffer_data
+    }
+    fn get_scene_index_buffer_data(
+        models: &mut Vec<GModel2>,
+        main_buffer_data: &Vec<u8>,
+    ) -> Vec<u16> {
+        let mut range_vec: Vec<std::ops::Range<usize>> = Vec::new();
+        for model in models.iter() {
+            for mesh in model.meshes.iter() {
+                for primitive in mesh.primitives.iter() {
+                    let primitive_range = primitive.indices_offset as usize
+                        ..(primitive.indices_offset + primitive.indices_length) as usize;
+                    crate::model::range_splicer::define_index_ranges(
+                        &mut range_vec,
+                        &primitive_range,
+                    );
+                }
+            }
+        }
+        let index_vec = GPrimitive2::get_index_data(main_buffer_data, &range_vec);
+        // add in the relative buffer offset and len based on the new composed data vec
+        for model in models.iter_mut() {
+            for mesh in model.meshes.iter_mut() {
+                for primitive in mesh.primitives.iter_mut() {
+                    primitive
+                        .set_primitive_offset(&range_vec)
+                        .expect("set primitive indices offset");
+                }
+            }
+        }
+        index_vec
     }
 }
 
@@ -297,11 +390,11 @@ trait SceneData<T> {
     fn extend(self, other: Self) -> Self;
 }
 
-struct VertexData {
+pub struct VertexData {
     vertices: Vec<ModelVertex>,
     vertex_buffer: Option<wgpu::Buffer>,
 }
-struct IndexData {
+pub struct IndexData {
     indices: Vec<u16>,
     index_buffer: Option<wgpu::Buffer>,
 }
