@@ -1,6 +1,6 @@
-use crate::{loader::loader::GModel2, scene::scene::GScene2};
+use crate::{model::model::GModel, scene::scene::GScene};
 
-impl GScene2 {
+impl GScene {
     pub fn print_transforms(&self) {
         let mut lt = self.instance_data.local_transform_data.iter();
         for (i, m) in self.models.iter().enumerate() {
@@ -19,7 +19,7 @@ impl GScene2 {
 }
 
 pub(super) fn calculate_model_mesh_offsets(
-    models: &Vec<GModel2>,
+    models: &Vec<GModel>,
     model_instances: &Vec<usize>,
 ) -> Vec<usize> {
     let mut model_mesh_offsets = Vec::with_capacity(models.len());

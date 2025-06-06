@@ -6,12 +6,10 @@ use std::{
 use cgmath::SquareMatrix;
 use gltf::Gltf;
 
-use crate::{
-    loader::loader::GModel2,
-    model::{
-        model::{GMesh2, LocalTransform},
-        util::GltfErrors,
-    },
+use crate::model::{
+    loader::loader::GltfFileLoadError,
+    model::{GModel, LocalTransform},
+    util::get_model_meshes,
 };
 
 struct ModelMeshData {
@@ -36,21 +34,12 @@ pub(super) struct GltfBinaryExtras {
 }
 pub(super) type GltfFiles = (PathBuf, PathBuf, Option<GltfBinaryExtras>);
 
-#[derive(Debug)]
-pub enum GltfFileLoadError {
-    NoGltfFile,
-    NoBinaryFile,
-    MultipleBinaryFiles,
-    IoErr(std::io::Error),
-    GltfError(gltf::Error),
-    BadFile,
-}
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
     nodes: gltf::iter::Nodes<'a>,
-) -> (Vec<GModel2>, Vec<LocalTransform>) {
+) -> (Vec<GModel>, Vec<LocalTransform>) {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
-    let mut models = Vec::<GModel2>::with_capacity(root_nodes_ids.len());
+    let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
     let mut local_transform_data = Vec::<LocalTransform>::new();
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
@@ -62,30 +51,11 @@ pub(super) fn load_models_from_gltf<'a>(
         );
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
-        let g_model = GModel2::new(None, meshes, model_mesh_data.mesh_instances);
+        let g_model = GModel::new(None, meshes, model_mesh_data.mesh_instances);
         local_transform_data.extend(model_mesh_data.transformation_matrices);
         models.push(g_model);
     }
     (models, local_transform_data)
-}
-
-fn get_model_meshes(
-    mesh_ids: &Vec<u32>,
-    nodes: &Vec<gltf::Node>,
-) -> Result<Vec<GMesh2>, GltfErrors> {
-    let mut meshes = Vec::<GMesh2>::new();
-    for mesh_id in mesh_ids.iter() {
-        let mesh = nodes
-            .iter()
-            .find(|n| n.mesh().is_some() && n.mesh().unwrap().index() as u32 == *mesh_id)
-            .unwrap()
-            .mesh()
-            .unwrap();
-        let g_mesh = GMesh2::new(&mesh)?;
-        meshes.push(g_mesh);
-    }
-
-    Ok(meshes)
 }
 
 /// recurse through the root node to get data on transformations, mesh indices, and mesh

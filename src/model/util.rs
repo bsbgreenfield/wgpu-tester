@@ -1,4 +1,4 @@
-use crate::model::model::AccessorDataType;
+use crate::model::model::{AccessorDataType, GMesh};
 use gltf::accessor::DataType;
 use gltf::Accessor;
 use std::fmt::Debug;
@@ -48,4 +48,22 @@ pub(super) fn get_primitive_data(
     let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
     let offset = buffer_view.offset() + accessor.offset();
     Ok((offset as u32, len as u32))
+}
+pub(super) fn get_model_meshes(
+    mesh_ids: &Vec<u32>,
+    nodes: &Vec<gltf::Node>,
+) -> Result<Vec<GMesh>, GltfErrors> {
+    let mut meshes = Vec::<GMesh>::new();
+    for mesh_id in mesh_ids.iter() {
+        let mesh = nodes
+            .iter()
+            .find(|n| n.mesh().is_some() && n.mesh().unwrap().index() as u32 == *mesh_id)
+            .unwrap()
+            .mesh()
+            .unwrap();
+        let g_mesh = GMesh::new(&mesh)?;
+        meshes.push(g_mesh);
+    }
+
+    Ok(meshes)
 }

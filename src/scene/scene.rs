@@ -1,5 +1,4 @@
-use crate::loader::loader::GModel2;
-use crate::loader::loader::GltfData;
+use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
@@ -9,15 +8,15 @@ use super::camera::Camera;
 use super::camera::{get_camera_bind_group, get_camera_default};
 use super::instances::InstanceData;
 
-pub struct GScene2 {
-    pub models: Vec<GModel2>,
+pub struct GScene {
+    pub models: Vec<GModel>,
     vertex_data: VertexData,
     index_data: IndexData,
     pub(super) instance_data: InstanceData,
     camera: Option<Camera>,
 }
 
-impl GScene2 {
+impl GScene {
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);
         self.index_data.init(device);
@@ -102,25 +101,25 @@ impl GScene2 {
 
 /// an uninitialized scene
 pub struct GSceneData {
-    pub models: Vec<GModel2>,
+    pub models: Vec<GModel>,
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
 }
 
 impl GSceneData {
-    pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene2 {
+    pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene {
         let mut scene = self.build_scene_uninit();
         scene.init(device, aspect_ratio);
         scene
     }
-    pub fn build_scene_uninit(self) -> GScene2 {
+    pub fn build_scene_uninit(self) -> GScene {
         let instance_data =
             InstanceData::default_from_scene(self.models.len(), self.local_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
 
-        GScene2 {
+        GScene {
             models: self.models,
             vertex_data,
             instance_data,
@@ -143,52 +142,30 @@ impl GSceneData {
     }
 
     fn get_scene_vertex_buffer_data(
-        models: &mut Vec<GModel2>,
+        models: &mut Vec<GModel>,
         main_buffer_data: &Vec<u8>,
     ) -> Vec<ModelVertex> {
         let mut vertex_buffer_data = Vec::<ModelVertex>::new();
         // loop through the models -> meshes -> primitives to build out the vertex buffer
         let mut buffer_offset_val = 0;
         for model in models.iter_mut() {
-            for mesh in model.meshes.iter_mut() {
-                for primitive in mesh.primitives.iter_mut() {
-                    let primitive_vertex_data = primitive.get_vertex_data(main_buffer_data);
-                    primitive.initialized_vertex_offset_len =
-                        Some((buffer_offset_val, primitive_vertex_data.len() as u32));
-                    buffer_offset_val += primitive_vertex_data.len() as u32;
-                    vertex_buffer_data.extend(primitive_vertex_data);
-                }
-            }
+            vertex_buffer_data
+                .extend(model.get_model_vertex_data(main_buffer_data, &mut buffer_offset_val));
         }
         vertex_buffer_data
     }
     fn get_scene_index_buffer_data(
-        models: &mut Vec<GModel2>,
+        models: &mut Vec<GModel>,
         main_buffer_data: &Vec<u8>,
     ) -> Vec<u16> {
         let mut range_vec: Vec<std::ops::Range<usize>> = Vec::new();
         for model in models.iter() {
-            for mesh in model.meshes.iter() {
-                for primitive in mesh.primitives.iter() {
-                    let primitive_range = primitive.indices_offset as usize
-                        ..(primitive.indices_offset + primitive.indices_length) as usize;
-                    crate::model::range_splicer::define_index_ranges(
-                        &mut range_vec,
-                        &primitive_range,
-                    );
-                }
-            }
+            model.build_range_vec(&mut range_vec); // MUTATE RANGE VEC
         }
-        let index_vec = GPrimitive2::get_index_data(main_buffer_data, &range_vec);
+        let index_vec = GModel::get_model_index_data(main_buffer_data, &range_vec);
         // add in the relative buffer offset and len based on the new composed data vec
         for model in models.iter_mut() {
-            for mesh in model.meshes.iter_mut() {
-                for primitive in mesh.primitives.iter_mut() {
-                    primitive
-                        .set_primitive_offset(&range_vec)
-                        .expect("set primitive indices offset");
-                }
-            }
+            model.set_model_primitive_offsets(&range_vec);
         }
         index_vec
     }

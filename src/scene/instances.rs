@@ -1,14 +1,11 @@
-use crate::scene::util::calculate_model_mesh_offsets;
+use crate::{model::model::GModel, scene::util::calculate_model_mesh_offsets};
 use cgmath::SquareMatrix;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
 
-use crate::{
-    loader::loader::GModel2,
-    model::{
-        model::{GlobalTransform, LocalTransform},
-        util::InitializationError,
-    },
+use crate::model::{
+    model::{GlobalTransform, LocalTransform},
+    util::InitializationError,
 };
 #[allow(dead_code)]
 
@@ -71,7 +68,7 @@ impl InstanceData {
 
     pub fn add_model_instance(
         &mut self,
-        models: &Vec<GModel2>,
+        models: &Vec<GModel>,
         model_index: usize,
         global_transforms: Vec<[[f32; 4]; 4]>,
     ) -> Result<(), InitializationError> {
@@ -118,7 +115,7 @@ impl InstanceData {
         &mut self,
         model_index: usize,
         new_instance_count: usize,
-        models: &Vec<GModel2>,
+        models: &Vec<GModel>,
     ) -> Result<&mut Self, InitializationError> {
         // step 1: create a new vec from all the mesh instances associated with the model
         //
@@ -184,7 +181,7 @@ impl InstanceData {
     }
 
     /// merge the instance data together
-    pub fn merge(mut self, mut other: Self, models: &Vec<GModel2>) -> Self {
+    pub fn merge(mut self, mut other: Self, models: &Vec<GModel>) -> Self {
         let number_of_models = self.model_instances.iter().sum::<usize>();
         for local_transform in other.local_transform_data.iter_mut() {
             local_transform.model_index += number_of_models as u32;

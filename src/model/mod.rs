@@ -1,4 +1,6 @@
+pub mod loader;
 pub mod model;
-pub mod range_splicer;
+mod primitive;
+mod range_splicer;
 pub mod util;
 pub mod vertex;

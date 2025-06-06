@@ -1,7 +1,9 @@
 use crate::{
-    loader::loader::{GltfData, GltfLoader},
-    model::util::InitializationError,
-    scene::scene::{GScene2, GSceneData},
+    model::{
+        loader::loader::{GltfData, GltfLoader},
+        util::InitializationError,
+    },
+    scene::scene::{GScene, GSceneData},
     transforms,
 };
 #[allow(dead_code)]
@@ -22,15 +24,14 @@ pub struct SceneScaffold<'a> {
     global_transforms: &'a [ScaffoldGlobalTransforms],
     instances: &'a [ScaffoldModelInstances<'a>],
 }
-
 impl<'a> SceneScaffold<'a> {
     pub fn create(
         &self,
         device: &wgpu::Device,
         aspect_ratio: f32,
-    ) -> Result<GScene2, InitializationError> {
+    ) -> Result<GScene, InitializationError> {
         // TODO: fix errors!!!!!
-        let gltf_data: GltfData = GltfLoader::load_gltf2(self.file_paths[0])
+        let gltf_data: GltfData = GltfLoader::load_gltf(self.file_paths[0])
             .map_err(|_| InitializationError::SceneInitializationError)?; // onyl one file path??
         let scene_data = GSceneData::new(gltf_data);
         let scene = scene_data.build_scene_init(device, aspect_ratio);

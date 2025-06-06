@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
-use super::util::*;
-use crate::model::model::{GMesh2, LocalTransform};
+use crate::model::{
+    loader::util::{get_data_files, get_root_nodes, load_models_from_gltf},
+    model::{GModel, LocalTransform},
+};
 use gltf::Gltf;
 
 pub struct GltfLoader;
@@ -10,7 +12,7 @@ pub struct GltfLoader;
 // box<dyn modelData>, but that seems like overkill for now.
 impl GltfLoader {
     /// process the given dir to get one gltf file, one binary file, and optional extra files
-    pub fn load_gltf2(dir_name: &str) -> Result<GltfData, GltfFileLoadError> {
+    pub fn load_gltf(dir_name: &str) -> Result<GltfData, GltfFileLoadError> {
         let dir_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("res")
             .join(dir_name);
@@ -36,29 +38,17 @@ impl GltfLoader {
 }
 
 pub struct GltfData {
-    pub models: Vec<GModel2>,
+    pub models: Vec<GModel>,
     pub binary_data: Vec<u8>,
     pub local_transforms: Vec<LocalTransform>,
 }
 
-pub struct AnimationData;
-
-pub struct GModel2 {
-    pub animation_data: Option<AnimationData>,
-    pub meshes: Vec<GMesh2>,
-    pub mesh_instances: Vec<u32>,
-}
-
-impl GModel2 {
-    pub fn new(
-        animation_data: Option<AnimationData>,
-        meshes: Vec<GMesh2>,
-        mesh_instances: Vec<u32>,
-    ) -> Self {
-        Self {
-            animation_data,
-            meshes,
-            mesh_instances,
-        }
-    }
+#[derive(Debug)]
+pub enum GltfFileLoadError {
+    NoGltfFile,
+    NoBinaryFile,
+    MultipleBinaryFiles,
+    IoErr(std::io::Error),
+    GltfError(gltf::Error),
+    BadFile,
 }

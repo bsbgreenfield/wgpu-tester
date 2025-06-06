@@ -2,7 +2,7 @@ use super::app_config::AppConfig;
 use super::util;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
-use crate::scene::scene::GScene2;
+use crate::scene::scene::GScene;
 use std::sync::Arc;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
@@ -34,7 +34,7 @@ pub enum UpdateResult {
 pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    gscene: GScene2,
+    gscene: GScene,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
 }
@@ -129,7 +129,7 @@ impl<'a> AppState<'a> {
 
     fn setup_global_instance_bind_group(
         app_config: &AppConfig,
-        scene: &GScene2,
+        scene: &GScene,
     ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
         let global_instance_bind_group_layout =
             app_config
