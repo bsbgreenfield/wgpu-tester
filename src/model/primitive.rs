@@ -72,7 +72,6 @@ impl GPrimitive {
         indices_ranges: &Vec<std::ops::Range<usize>>,
     ) -> Vec<u16> {
         let mut index_vec: Vec<u16> = Vec::new();
-        println!("{:?}", indices_ranges);
         for range in indices_ranges.iter() {
             let indices_bytes: &[u8] = &main_buffer_data[range.start..range.end];
             let indices_u16: &[u16] = bytemuck::cast_slice::<u8, u16>(indices_bytes);
