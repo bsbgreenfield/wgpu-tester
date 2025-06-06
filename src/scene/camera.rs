@@ -41,10 +41,6 @@ impl CameraData {
         self.eye_pos.add_assign_element_wise(point);
         self.target.add_assign_element_wise(point);
     }
-
-    fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
-        self.target.add_assign_element_wise(rot);
-    }
 }
 pub struct Camera {
     camera_data: CameraData,
@@ -89,10 +85,6 @@ impl Camera {
 
     pub(super) fn update_position(&mut self, point: cgmath::Point3<f32>) {
         self.camera_data.update_position(point);
-        self.camera_uniform.update(&self.camera_data);
-    }
-    pub(super) fn update_rot(&mut self, rot: cgmath::Point3<f32>) {
-        self.camera_data.update_rot(rot);
         self.camera_uniform.update(&self.camera_data);
     }
 }

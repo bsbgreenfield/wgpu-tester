@@ -4,22 +4,7 @@ use super::util::*;
 use crate::model::model::{GMesh2, LocalTransform};
 use gltf::Gltf;
 
-enum ModelFileType {
-    GLTF,
-    OTHER,
-}
-
-trait ModelLoader<'a> {
-    fn get_models(file_type: ModelFileType, dir_path: &'a str) -> Vec<GModel2>;
-}
-
 pub struct GltfLoader;
-
-impl<'a> ModelLoader<'a> for GltfLoader {
-    fn get_models(file_type: ModelFileType, dir_path: &'a str) -> Vec<GModel2> {
-        vec![]
-    }
-}
 
 // could abstract this even further by requiring a function which returns some kind of
 // box<dyn modelData>, but that seems like overkill for now.

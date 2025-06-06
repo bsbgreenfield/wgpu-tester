@@ -1,6 +1,4 @@
-use std::iter::Peekable;
 use std::ops::Range;
-use std::vec::IntoIter;
 
 #[derive(PartialEq, PartialOrd, Debug)]
 enum IndexResult {

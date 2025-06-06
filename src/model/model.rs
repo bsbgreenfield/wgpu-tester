@@ -1,14 +1,11 @@
+use super::util::GltfErrors;
 use super::util::InitializationError;
-use super::util::{get_primitive_index_data, get_primitive_vertex_data, GltfErrors};
 use crate::loader::loader::GModel2;
 use crate::model::util::get_primitive_data;
 use crate::model::vertex::ModelVertex;
-use crate::scene::scene::SceneBufferData;
-use crate::scene::scene::{GScene, GScene2};
-use gltf::accessor::DataType;
+use crate::scene::scene::GScene2;
 use gltf::{Mesh, Primitive};
 use std::ops::{self, Range};
-use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccessorDataType {
@@ -29,15 +26,6 @@ pub struct GPrimitive2 {
 }
 
 impl GPrimitive2 {
-    fn is_initialized(&self) -> bool {
-        if self.initialized_index_offset_len.is_some()
-            && self.initialized_vertex_offset_len.is_some()
-        {
-            return true;
-        }
-        false
-    }
-
     fn new(primitive: Primitive) -> Result<Self, GltfErrors> {
         let (_, position_accessor) = primitive
             .attributes()
@@ -53,7 +41,8 @@ impl GPrimitive2 {
 
         let (position_offset, position_length) =
             get_primitive_data(&position_accessor, AccessorDataType::Vec3F32)?;
-        let (normal_offset, normal_length) = get_primitive_data(&normals_accessor, AccessorDataType::Vec3F32)?;
+        let (normal_offset, normal_length) =
+            get_primitive_data(&normals_accessor, AccessorDataType::Vec3F32)?;
         let (indices_offset, indices_length) =
             get_primitive_data(&indices_accessor, AccessorDataType::U16)?;
         Ok(Self {
@@ -125,83 +114,6 @@ impl GPrimitive2 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct GPrimitive {
-    vertices_offset: u32,
-    vertices_length: u32,
-    indices_offset: u32,
-    indices_length: u32,
-}
-
-impl GPrimitive {
-    fn new(
-        primitive: Primitive,
-        scene_buffer_data: &mut SceneBufferData,
-    ) -> Result<Self, GltfErrors> {
-        let (_, position_accessor) = primitive
-            .attributes()
-            .find(|a| a.0 == gltf::Semantic::Positions)
-            .unwrap();
-
-        let (_, normals_accessor) = primitive
-            .attributes()
-            .find(|a| a.0 == gltf::Semantic::Normals)
-            .unwrap();
-
-        let indices_accessor = primitive.indices().unwrap();
-
-        let (vertices_offset, vertices_length) = get_primitive_vertex_data(
-            &position_accessor,
-            &normals_accessor,
-            &mut scene_buffer_data.vertex_buf,
-            &scene_buffer_data.main_buffer_data,
-        )?;
-
-        let (indices_offset, indices_length) =
-            get_primitive_index_data(&indices_accessor, scene_buffer_data)?;
-
-        Ok(Self {
-            vertices_offset,
-            vertices_length,
-            indices_offset,
-            indices_length,
-        })
-    }
-
-    pub(super) fn set_primitive_offset(
-        &mut self,
-        index_ranges: &Vec<Range<usize>>,
-    ) -> Result<(), InitializationError> {
-        // upon creation, this primitive will have stored its offset and length relative to the
-        // main byte buffer. Also at this stage, scene_buffer_data has stored a list of ranges that
-        // need to be composed into the final index buffer. We need to translate the indices
-        // relative to the main buffer to indices relative to a buffer which would contain only the
-        // ranges specified in scene_buffer_data.
-        let mut relative_buffer_offset = 0;
-        for index_range in index_ranges.iter() {
-            if self.indices_offset as usize > index_range.end {
-                relative_buffer_offset += index_range.len();
-            } else {
-                relative_buffer_offset += self.indices_offset as usize - index_range.start;
-                // paranoid?
-                if (self.indices_offset + self.indices_length) as usize > index_range.end {
-                    return Err(InitializationError::SceneInitializationError);
-                }
-                break;
-            }
-        }
-
-        self.indices_offset = (relative_buffer_offset / 2) as u32;
-        self.indices_length = self.indices_length / 2;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct GMesh {
-    pub index: u32,
-    primitives: Vec<GPrimitive>,
-}
 #[derive(Debug, Clone)]
 pub struct GMesh2 {
     pub index: u32,
@@ -220,64 +132,8 @@ impl GMesh2 {
         })
     }
 }
-impl GMesh {
-    pub fn new(mesh: &Mesh, scene_buffer_data: &mut SceneBufferData) -> Result<Self, GltfErrors> {
-        let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
-        for primitive in mesh.primitives() {
-            // loop through the primitives and build out the vertex buffer and index buffer
-            // side effects!
-            let p = GPrimitive::new(primitive, scene_buffer_data)?;
-            g_primitives.push(p);
-        }
-
-        Ok(Self {
-            index: mesh.index() as u32,
-            primitives: g_primitives,
-        })
-    }
-
-    pub fn get_total_vertex_len(&self) -> u32 {
-        let mut vertex_count = 0;
-        for primitive in self.primitives.iter() {
-            vertex_count += primitive.vertices_length;
-        }
-        return vertex_count;
-    }
-    pub fn get_total_index_len(&self) -> u32 {
-        let mut index_count = 0;
-        for primitive in self.primitives.iter() {
-            index_count += primitive.indices_length;
-        }
-        return index_count;
-    }
-    /// this function increases the offset of all primitive vertex and index data in the mesh.
-    /// This is needed for gltf file merging, as the scene to which this mesh belongs is being
-    /// appended to a list of vertices and indices
-    pub fn update_primitive_offsets_during_merge(&mut self, vertex_count: u32, index_count: u32) {
-        for primitive in self.primitives.iter_mut() {
-            primitive.vertices_offset += vertex_count;
-            primitive.indices_offset += index_count;
-        }
-    }
-
-    pub fn set_primitive_offsets(&mut self, index_ranges: &Vec<Range<usize>>) {
-        for primitive in self.primitives.iter_mut() {
-            let result = primitive.set_primitive_offset(index_ranges);
-            if result.is_err() {
-                panic!("error initializing primitives");
-            }
-        }
-    }
-}
-
-pub struct GModel {
-    pub byte_data: Rc<Vec<u8>>,
-    pub meshes: Vec<GMesh>,
-    pub mesh_instances: Vec<u32>,
-}
 
 pub trait GDrawModel<'a> {
-    fn draw_gmesh(&mut self, mesh: &'a GMesh);
     fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh2, instances: Range<u32>);
     fn draw_gmodel(&mut self, model: &'a GModel2, instances: u32, num_mesh_instances: u32) -> u32;
     fn draw_scene(&mut self, scene: &'a GScene2);
@@ -287,7 +143,6 @@ impl<'a, 'b> GDrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
-    fn draw_gmesh(&mut self, mesh: &'b GMesh) {}
     fn draw_gmesh_instanced(&mut self, mesh: &'b GMesh2, instances: Range<u32>) {
         for primitive in mesh.primitives.iter() {
             let (indices_offset, indices_length) = primitive.initialized_index_offset_len.unwrap();

@@ -5,7 +5,7 @@ use winit::{
     dpi::PhysicalSize,
     event::*,
     event_loop::ActiveEventLoop,
-    keyboard::{Key, KeyCode, PhysicalKey},
+    keyboard::{KeyCode, PhysicalKey},
     window::{self, Window},
 };
 
@@ -18,7 +18,7 @@ pub struct App<'a> {
 
 impl App<'_> {
     fn update_state(&mut self) {
-        self.app_state.as_mut().unwrap().update();
+        let _ = self.app_state.as_mut().unwrap().update();
     }
     fn process_keypress(
         &mut self,
@@ -66,7 +66,7 @@ impl ApplicationHandler for App<'_> {
                     )
                     .unwrap(),
             );
-            let app_state = pollster::block_on(AppState::new2(window.clone()));
+            let app_state = pollster::block_on(AppState::new(window.clone()));
             self.app_state = Some(app_state);
             self.window = Some(window.clone());
             window.request_redraw();
@@ -75,7 +75,7 @@ impl ApplicationHandler for App<'_> {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: window::WindowId,
+        _window_id: window::WindowId,
         event: WindowEvent,
     ) {
         match event {

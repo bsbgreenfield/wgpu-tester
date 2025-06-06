@@ -11,7 +11,6 @@ use crate::{
     model::{
         model::{GMesh2, LocalTransform},
         util::GltfErrors,
-        vertex::ModelVertex,
     },
 };
 
@@ -30,20 +29,7 @@ impl ModelMeshData {
     }
 }
 
-struct ModelBufferData {
-    pub vertex_buf: Vec<ModelVertex>,
-    pub index_buf: Vec<u16>,
-    pub index_ranges: Vec<std::ops::Range<usize>>,
-}
-impl ModelBufferData {
-    fn new() -> Self {
-        Self {
-            vertex_buf: Vec::new(),
-            index_buf: Vec::new(),
-            index_ranges: Vec::new(),
-        }
-    }
-}
+#[allow(dead_code)]
 pub(super) struct GltfBinaryExtras {
     animation: Option<PathBuf>,
     textures: Option<Vec<PathBuf>>,
@@ -148,7 +134,7 @@ pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {
     Ok(mesh_node_iter.map(|n| n.index()).collect())
 }
 pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoadError> {
-    let mut gltf_file: Option<PathBuf> = None;
+    let gltf_file: PathBuf;
     let mut bin_file: Option<PathBuf> = None;
     let mut entries: ReadDir = fs::read_dir(&dir_path).map_err(|e| GltfFileLoadError::IoErr(e))?;
 
@@ -164,7 +150,7 @@ pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoa
         })
         .ok_or(GltfFileLoadError::NoGltfFile)? // if find return none, return this err
         .map_err(|_| GltfFileLoadError::BadFile)?; // if find returns an Err, map it to BadFile
-    gltf_file = Some(gltf_entry.path());
+    gltf_file = gltf_entry.path();
 
     // step 2: assert that there is only a single binary file and grab it
     let entries: ReadDir = fs::read_dir(&dir_path).map_err(|e| GltfFileLoadError::IoErr(e))?;
@@ -173,7 +159,6 @@ pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoa
             return Err(GltfFileLoadError::MultipleBinaryFiles);
         }
         if let Ok(dir_entry) = entry {
-            println!("{:?}", dir_entry.path().extension());
             if dir_entry
                 .path()
                 .extension()
@@ -186,7 +171,6 @@ pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoa
             return Err(GltfFileLoadError::BadFile);
         }
     }
-    let gltf = gltf_file.expect("gltf");
     let bin = bin_file.expect("bin");
-    Ok((gltf, bin, None))
+    Ok((gltf_file, bin, None))
 }
