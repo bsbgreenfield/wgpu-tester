@@ -4,18 +4,45 @@ use std::{
 };
 
 use cgmath::SquareMatrix;
-use gltf::Gltf;
+use gltf::{accessor::DataType, Gltf, Node};
 
 use crate::model::{
+    animation::{GltfAnimationComponentData, GltfAnimationData, Interpolation},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
 
+enum NodeType {
+    Node,
+    Mesh,
+}
+struct GNode {
+    children: Vec<GNode>,
+    node_type: NodeType,
+    node_id: usize,
+}
+impl GNode {
+    fn new(node: &Node, children: Vec<GNode>) -> Self {
+        match node.mesh() {
+            Some(_) => GNode {
+                children,
+                node_type: NodeType::Mesh,
+                node_id: node.index(),
+            },
+            None => GNode {
+                children,
+                node_type: NodeType::Node,
+                node_id: node.index(),
+            },
+        }
+    }
+}
 struct ModelMeshData {
-    pub mesh_ids: Vec<u32>,
-    pub mesh_instances: Vec<u32>,
-    pub transformation_matrices: Vec<LocalTransform>,
+    mesh_ids: Vec<u32>,
+    mesh_instances: Vec<u32>,
+    transformation_matrices: Vec<LocalTransform>,
+    gnode: Option<GNode>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -23,6 +50,7 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             transformation_matrices: Vec::new(),
+            gnode: None,
         }
     }
 }
@@ -34,9 +62,18 @@ pub(super) struct GltfBinaryExtras {
 }
 pub(super) type GltfFiles = (PathBuf, PathBuf, Option<GltfBinaryExtras>);
 
+fn build_node_tree(node: &gltf::Node) -> GNode {
+    let children: Vec<GNode> = node
+        .children()
+        .map(|child| build_node_tree(&child))
+        .collect();
+    GNode::new(node, children)
+}
+
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
     nodes: gltf::iter::Nodes<'a>,
+    animations: &gltf::iter::Animations,
 ) -> (Vec<GModel>, Vec<LocalTransform>) {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
@@ -44,11 +81,14 @@ pub(super) fn load_models_from_gltf<'a>(
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
+        let gnode = build_node_tree(root_node); // for processing animations
+        let animation_data: Vec<GltfAnimationData> = load_animations(&gnode, animations);
         model_mesh_data = find_model_meshes(
             root_node,
             cgmath::Matrix4::<f32>::identity(),
             model_mesh_data,
         );
+        model_mesh_data.gnode = Some(gnode);
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
         let g_model = GModel::new(None, meshes, model_mesh_data.mesh_instances);
@@ -56,6 +96,70 @@ pub(super) fn load_models_from_gltf<'a>(
         models.push(g_model);
     }
     (models, local_transform_data)
+}
+
+pub(super) fn load_animations(
+    gnode: &GNode,
+    animations: &gltf::iter::Animations,
+) -> Vec<GltfAnimationData> {
+    let mut animations_data: Vec<GltfAnimationData> = Vec::new();
+    for animation in animations.clone().into_iter() {
+        let mut gltf_animation_components = Vec::<GltfAnimationComponentData>::new();
+        for channel in animation.channels() {
+            let mut mesh_ids = Vec::<usize>::new();
+            let node_id: usize = channel.target().node().index();
+            find_meshes_for_animation(&gnode, node_id, &mut mesh_ids);
+            gltf_animation_components.push(GltfAnimationComponentData {
+                mesh_ids: mesh_ids,
+                times_data: get_animation_times(&channel.sampler().input()),
+                transforms_data: get_animation_transforms(&channel.sampler().output()),
+                interpolation: Interpolation::from(channel.sampler().interpolation()),
+            });
+        }
+        animations_data.push(GltfAnimationData {
+            animation_components: gltf_animation_components,
+        });
+    }
+    animations_data
+}
+
+fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
+    assert_eq!(times_accessor.data_type(), DataType::F32);
+    let length = times_accessor.count() * 4;
+    let offset = times_accessor.offset() + (times_accessor.view().unwrap().offset());
+    (offset, length)
+}
+
+fn get_animation_transforms(transforms_accessor: &gltf::Accessor) -> (usize, usize) {
+    assert_eq!(transforms_accessor.data_type(), DataType::F32);
+    let length = transforms_accessor.count() * 16;
+    let offset = transforms_accessor.offset() + (transforms_accessor.view().unwrap().offset());
+    (offset, length)
+}
+
+fn find_meshes_for_animation(gnode: &GNode, node_id: usize, mesh_ids: &mut Vec<usize>) {
+    let parent_node = find_node(gnode, node_id).expect("No node with this id found in gnode tree");
+    find_meshes_under_node(parent_node, mesh_ids);
+}
+fn find_node(gnode: &GNode, node_id: usize) -> Option<&GNode> {
+    if gnode.node_id == node_id {
+        return Some(gnode);
+    }
+    for child in gnode.children.iter() {
+        return find_node(child, node_id);
+    }
+    None
+}
+
+fn find_meshes_under_node(gnode: &GNode, mesh_ids: &mut Vec<usize>) {
+    match gnode.node_type {
+        NodeType::Mesh => mesh_ids.push(gnode.node_id),
+        NodeType::Node => {
+            for child in gnode.children.iter() {
+                find_meshes_under_node(child, mesh_ids);
+            }
+        }
+    }
 }
 
 /// recurse through the root node to get data on transformations, mesh indices, and mesh
@@ -91,7 +195,7 @@ fn find_model_meshes(
         }
     }
     for child_node in root_node.children() {
-        model_mesh_data = find_model_meshes(&child_node, base_translation, model_mesh_data)
+        model_mesh_data = find_model_meshes(&child_node, base_translation, model_mesh_data);
     }
     model_mesh_data
 }

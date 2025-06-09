@@ -26,7 +26,8 @@ impl GltfLoader {
         let binary_data = std::fs::read(files.1).map_err(|e| GltfFileLoadError::IoErr(e))?;
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
         let nodes = gltf.nodes();
-        let (models, local_transforms) = load_models_from_gltf(root_node_ids, nodes);
+        let (models, local_transforms) =
+            load_models_from_gltf(root_node_ids, nodes, &gltf.animations());
         let gltf_data = GltfData {
             models,
             binary_data,

@@ -71,3 +71,49 @@ transform. But i would imagine that we could pull that off.
 also, if we end up in a scenario where animations affecting other animations is super common, then we could maye still do 
 async by splitting the animation caculations into multipl passes. or just doing it synchronously is always something to try
 
+
+
+there is a somewhat tricky aspect to making sure the correct animations are applied to the correct meshes that I need to account for. Namely, the fact that animations are applied per node and not per mesh.
+
+This means that there could, for example, be some node N
+
+N {
+  rotation: [...]
+  children: [m1, m2]
+}
+with meshes 
+m1 {
+  translation: [..],
+  mesh: 0
+}
+m2 {
+  tranlation: [..],
+  mesh: 1,
+}
+
+Now, if the animation is being applied to N, then it is saying that the rotation component of the local transforms
+of both m1 and m2 are being update each key frame. This makes a lot of sense for a transmission format, but unfortunately im currently abstracting this information away during the recursion process in find_model_meshes().
+
+
+to account for this, i need to actually keep track of the node tree while recursing. Leaf nodes are meshes, everything else is just a regular node. When recursing through the animation data, i can use this node tree as a reference for which mesh is actually being updated. referring back to the previous example:
+
+    N
+   / \
+  m1  m2
+
+if the animation refers to N as its output, I know to add a new Animation to all of Ns children. A more complex example:
+
+                                  n1
+                                /  |  \
+                               n2  m3  m4
+                              /  \
+                             m1   m2  
+animation with n2 applies only to m1 and m2, while an animation with n1 applies to m1-m4
+
+
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 use super::util::GltfErrors;
-use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
+use crate::model::{animation::AnimationData, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
 use std::ops::{self, Range};
@@ -10,7 +10,6 @@ pub enum AccessorDataType {
     Vec3F32,
     U16,
 }
-pub struct AnimationData;
 
 // Maybe this entire folder should be moved inside of scene
 // its annoying that these three functions are left as pub just

@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod loader;
 pub mod model;
 mod primitive;
