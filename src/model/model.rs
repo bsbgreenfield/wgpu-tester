@@ -1,4 +1,6 @@
 use super::util::GltfErrors;
+use crate::model::animation::UninitAnimationData;
+use crate::model::primitive::UninitPrimitive;
 use crate::model::vertex::ModelVertex;
 use crate::model::{animation::AnimationData, primitive::GPrimitive};
 use crate::scene::scene::GScene;
@@ -9,6 +11,32 @@ use std::ops::{self, Range};
 pub enum AccessorDataType {
     Vec3F32,
     U16,
+}
+
+pub(super) trait UninitModelElement<T> {
+    fn init(self) -> T;
+}
+
+struct UninitModel {
+    animation_data: UninitAnimationData,
+    meshes: Vec<UninitMesh>,
+    pub mesh_instances: Vec<u32>,
+}
+
+impl UninitModelElement<GModel> for UninitModel {
+    fn init(self) -> GModel {
+        todo!()
+    }
+}
+
+impl UninitModelElement<GMesh> for UninitMesh {
+    fn init(self) -> GMesh {
+        todo!()
+    }
+}
+
+struct UninitMesh {
+    primitives: Vec<UninitPrimitive>,
 }
 
 // Maybe this entire folder should be moved inside of scene

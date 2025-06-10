@@ -15,7 +15,14 @@ pub(super) struct InstanceData {
     pub local_transform_data: Vec<LocalTransform>,
     pub global_transform_buffer: Option<wgpu::Buffer>,
     pub global_transform_data: Vec<[[f32; 4]; 4]>,
-    pub instance_local_offsets: Vec<usize>,
+    /// These are the offsets which correspond to the slot
+    /// of the first local transform for this model.
+    /// All local transforms which refer to a model would be located in the range from
+    /// ```rust
+    /// [instance_local_offsets[model_idx] .. (instance_local_offsets[model_idx] +
+    /// model.mesh_instance_count * model_instances[model_idx])]
+    /// ```
+    instance_local_offsets: Vec<usize>,
 }
 
 #[allow(dead_code)]
@@ -25,7 +32,9 @@ impl InstanceData {
         model_count: usize,
         local_transform_data: Vec<LocalTransform>,
     ) -> Self {
+        // on instance of each model
         let model_instances: Vec<usize> = (0..model_count).into_iter().map(|_| 1).collect();
+        // every model goes at the origin
         let global_transform_data: Vec<[[f32; 4]; 4]> = (0..model_count)
             .into_iter()
             .map(|_| cgmath::Matrix4::<f32>::identity().into())
@@ -152,13 +161,13 @@ impl InstanceData {
             .splice(model_mesh_range, transform_slice);
         // step 4: increase the offsets for all the models after this one by the number of new
         // instances just added
-        let num_new_instances = model_mesh_count * new_instance_count;
+        let num_new_mesh_instances = model_mesh_count * new_instance_count;
         for offset_val in self
             .instance_local_offsets
             .iter_mut()
             .skip(instance_offset + 1)
         {
-            *offset_val += num_new_instances;
+            *offset_val += num_new_mesh_instances;
         }
 
         Ok(self)

@@ -64,6 +64,11 @@ pub const DRAGON: SceneScaffold = SceneScaffold {
     global_transforms: &[],
     instances: &[],
 };
+pub const BOX_ANIMATED: SceneScaffold = SceneScaffold {
+    file_paths: &["box-animated"],
+    global_transforms: &[],
+    instances: &[],
+};
 const fn buggy_shrink(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
     ScaffoldGlobalTransforms {
         instance_index,

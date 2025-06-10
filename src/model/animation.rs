@@ -1,12 +1,34 @@
+use crate::model::model::UninitModelElement;
+
 pub struct AnimationData {
     animations: Vec<Animation>,
 }
 
+pub struct UninitAnimationData {
+    pub mesh_ids: Vec<usize>,
+    pub times_data: (usize, usize),
+    pub transforms_data: (usize, usize),
+    pub interpolation: Interpolation,
+}
+
+impl UninitModelElement<AnimationData> for UninitAnimationData {
+    fn init(self) -> AnimationData {
+        todo!()
+    }
+}
+
 pub struct Animation {
-    lt_index: usize,
-    times: Vec<f32>,
+    lt_index: Option<usize>,
+    times: Option<Vec<f32>>,
     transforms: Vec<AnimationTransform>,
+    times_data: (usize, usize),
+    transforms_data: (usize, usize),
     interpolation: Interpolation,
+}
+
+struct InitializedAnimationData {
+    lt_index: usize,
+    times: Option<Vec<f32>>,
 }
 
 #[derive(Debug)]

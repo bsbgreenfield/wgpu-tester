@@ -4,7 +4,7 @@ use std::{
 };
 
 use cgmath::SquareMatrix;
-use gltf::{accessor::DataType, Gltf, Node};
+use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
 
 use crate::model::{
     animation::{GltfAnimationComponentData, GltfAnimationData, Interpolation},
@@ -13,6 +13,7 @@ use crate::model::{
     util::get_model_meshes,
 };
 
+#[derive(Debug)]
 enum NodeType {
     Node,
     Mesh,
@@ -21,19 +22,22 @@ struct GNode {
     children: Vec<GNode>,
     node_type: NodeType,
     node_id: usize,
+    mesh_id: Option<usize>,
 }
 impl GNode {
     fn new(node: &Node, children: Vec<GNode>) -> Self {
         match node.mesh() {
-            Some(_) => GNode {
+            Some(mesh) => GNode {
                 children,
                 node_type: NodeType::Mesh,
                 node_id: node.index(),
+                mesh_id: Some(mesh.index()),
             },
             None => GNode {
                 children,
                 node_type: NodeType::Node,
                 node_id: node.index(),
+                mesh_id: None,
             },
         }
     }
@@ -82,17 +86,30 @@ pub(super) fn load_models_from_gltf<'a>(
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
         let gnode = build_node_tree(root_node); // for processing animations
-        let animation_data: Vec<GltfAnimationData> = load_animations(&gnode, animations);
+
+        // animations
+        let animation_data: Option<Vec<GltfAnimationData>> = load_animations(&gnode, animations);
+        match animation_data {
+            Some(a) => println!("{:?}", a),
+            None => println!("no animations forund for rn {}", rid),
+        }
+
+        // mesh data
         model_mesh_data = find_model_meshes(
             root_node,
             cgmath::Matrix4::<f32>::identity(),
             model_mesh_data,
         );
         model_mesh_data.gnode = Some(gnode);
+
+        // instantiate meshes, instantiate model
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
         let g_model = GModel::new(None, meshes, model_mesh_data.mesh_instances);
+
+        // add the local transformations to the running vec
         local_transform_data.extend(model_mesh_data.transformation_matrices);
+
         models.push(g_model);
     }
     (models, local_transform_data)
@@ -101,14 +118,20 @@ pub(super) fn load_models_from_gltf<'a>(
 pub(super) fn load_animations(
     gnode: &GNode,
     animations: &gltf::iter::Animations,
-) -> Vec<GltfAnimationData> {
+) -> Option<Vec<GltfAnimationData>> {
     let mut animations_data: Vec<GltfAnimationData> = Vec::new();
     for animation in animations.clone().into_iter() {
         let mut gltf_animation_components = Vec::<GltfAnimationComponentData>::new();
-        for channel in animation.channels() {
+        // i dont understand how the gltf crate expects me to use the normal channels iter
+        let channels: Vec<Channel> = animation.channels().into_iter().collect();
+        for channel in channels.iter() {
             let mut mesh_ids = Vec::<usize>::new();
             let node_id: usize = channel.target().node().index();
+            println!("Searching for meshes that correspond to node {}", node_id);
             find_meshes_for_animation(&gnode, node_id, &mut mesh_ids);
+            if mesh_ids.is_empty() {
+                return None;
+            }
             gltf_animation_components.push(GltfAnimationComponentData {
                 mesh_ids: mesh_ids,
                 times_data: get_animation_times(&channel.sampler().input()),
@@ -120,7 +143,7 @@ pub(super) fn load_animations(
             animation_components: gltf_animation_components,
         });
     }
-    animations_data
+    Some(animations_data)
 }
 
 fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
@@ -138,10 +161,15 @@ fn get_animation_transforms(transforms_accessor: &gltf::Accessor) -> (usize, usi
 }
 
 fn find_meshes_for_animation(gnode: &GNode, node_id: usize, mesh_ids: &mut Vec<usize>) {
-    let parent_node = find_node(gnode, node_id).expect("No node with this id found in gnode tree");
-    find_meshes_under_node(parent_node, mesh_ids);
+    if let Some(parent_node) = find_node(gnode, node_id) {
+        println!("found node {}", parent_node.node_id);
+        find_meshes_under_node(parent_node, mesh_ids);
+    } else {
+        return;
+    }
 }
 fn find_node(gnode: &GNode, node_id: usize) -> Option<&GNode> {
+    println!("visiting node {}", gnode.node_id);
     if gnode.node_id == node_id {
         return Some(gnode);
     }
@@ -153,7 +181,7 @@ fn find_node(gnode: &GNode, node_id: usize) -> Option<&GNode> {
 
 fn find_meshes_under_node(gnode: &GNode, mesh_ids: &mut Vec<usize>) {
     match gnode.node_type {
-        NodeType::Mesh => mesh_ids.push(gnode.node_id),
+        NodeType::Mesh => mesh_ids.push(gnode.mesh_id.unwrap()),
         NodeType::Node => {
             for child in gnode.children.iter() {
                 find_meshes_under_node(child, mesh_ids);
