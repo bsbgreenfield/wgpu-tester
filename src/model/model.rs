@@ -1,8 +1,6 @@
 use super::util::GltfErrors;
-use crate::model::animation::UninitAnimationData;
-use crate::model::primitive::UninitPrimitive;
 use crate::model::vertex::ModelVertex;
-use crate::model::{animation::AnimationData, primitive::GPrimitive};
+use crate::model::{animation::Animation, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
 use std::ops::{self, Range};
@@ -13,45 +11,19 @@ pub enum AccessorDataType {
     U16,
 }
 
-pub(super) trait UninitModelElement<T> {
-    fn init(self) -> T;
-}
-
-struct UninitModel {
-    animation_data: UninitAnimationData,
-    meshes: Vec<UninitMesh>,
-    pub mesh_instances: Vec<u32>,
-}
-
-impl UninitModelElement<GModel> for UninitModel {
-    fn init(self) -> GModel {
-        todo!()
-    }
-}
-
-impl UninitModelElement<GMesh> for UninitMesh {
-    fn init(self) -> GMesh {
-        todo!()
-    }
-}
-
-struct UninitMesh {
-    primitives: Vec<UninitPrimitive>,
-}
-
 // Maybe this entire folder should be moved inside of scene
 // its annoying that these three functions are left as pub just
 // so that scene can access them, but I may want to work with
 // modesls independently later
 pub struct GModel {
-    pub animation_data: Option<AnimationData>,
+    pub animation_data: Option<Animation>,
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
 }
 
 impl GModel {
     pub(super) fn new(
-        animation_data: Option<AnimationData>,
+        animation_data: Option<Animation>,
         meshes: Vec<GMesh>,
         mesh_instances: Vec<u32>,
     ) -> Self {

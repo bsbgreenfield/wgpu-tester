@@ -7,7 +7,7 @@ use cgmath::SquareMatrix;
 use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
 
 use crate::model::{
-    animation::{GltfAnimationComponentData, GltfAnimationData, Interpolation},
+    animation::{Animation, AnimationComponent, Interpolation},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
@@ -88,11 +88,7 @@ pub(super) fn load_models_from_gltf<'a>(
         let gnode = build_node_tree(root_node); // for processing animations
 
         // animations
-        let animation_data: Option<Vec<GltfAnimationData>> = load_animations(&gnode, animations);
-        match animation_data {
-            Some(a) => println!("{:?}", a),
-            None => println!("no animations forund for rn {}", rid),
-        }
+        let animation_data: Option<Vec<Animation>> = load_animations(&gnode, animations);
 
         // mesh data
         model_mesh_data = find_model_meshes(
@@ -118,10 +114,10 @@ pub(super) fn load_models_from_gltf<'a>(
 pub(super) fn load_animations(
     gnode: &GNode,
     animations: &gltf::iter::Animations,
-) -> Option<Vec<GltfAnimationData>> {
-    let mut animations_data: Vec<GltfAnimationData> = Vec::new();
+) -> Option<Vec<Animation>> {
+    let mut animations_vec: Vec<Animation> = Vec::new();
     for animation in animations.clone().into_iter() {
-        let mut gltf_animation_components = Vec::<GltfAnimationComponentData>::new();
+        let mut animation_components = Vec::<AnimationComponent>::new();
         // i dont understand how the gltf crate expects me to use the normal channels iter
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
         for channel in channels.iter() {
@@ -132,18 +128,19 @@ pub(super) fn load_animations(
             if mesh_ids.is_empty() {
                 return None;
             }
-            gltf_animation_components.push(GltfAnimationComponentData {
-                mesh_ids: mesh_ids,
-                times_data: get_animation_times(&channel.sampler().input()),
-                transforms_data: get_animation_transforms(&channel.sampler().output()),
-                interpolation: Interpolation::from(channel.sampler().interpolation()),
-            });
+            let animation_uninit: AnimationComponent = AnimationComponent::new_uninit(
+                mesh_ids,
+                get_animation_times(&channel.sampler().input()),
+                get_animation_transforms(&channel.sampler().output()),
+                Interpolation::from(channel.sampler().interpolation()),
+            );
+            animation_components.push(animation_uninit);
         }
-        animations_data.push(GltfAnimationData {
-            animation_components: gltf_animation_components,
+        animations_vec.push(Animation {
+            animation_components,
         });
     }
-    Some(animations_data)
+    Some(animations_vec)
 }
 
 fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {

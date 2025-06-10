@@ -1,34 +1,36 @@
-use crate::model::model::UninitModelElement;
-
-pub struct AnimationData {
-    animations: Vec<Animation>,
-}
-
-pub struct UninitAnimationData {
-    pub mesh_ids: Vec<usize>,
-    pub times_data: (usize, usize),
-    pub transforms_data: (usize, usize),
-    pub interpolation: Interpolation,
-}
-
-impl UninitModelElement<AnimationData> for UninitAnimationData {
-    fn init(self) -> AnimationData {
-        todo!()
-    }
-}
-
 pub struct Animation {
-    lt_index: Option<usize>,
-    times: Option<Vec<f32>>,
-    transforms: Vec<AnimationTransform>,
+    pub animation_components: Vec<AnimationComponent>,
+}
+
+pub struct AnimationComponent {
+    data: Option<InitializedAnimationData>,
+    mesh_ids: Vec<usize>,
     times_data: (usize, usize),
     transforms_data: (usize, usize),
     interpolation: Interpolation,
 }
 
+impl AnimationComponent {
+    pub fn new_uninit(
+        mesh_ids: Vec<usize>,
+        times_data: (usize, usize),
+        transforms_data: (usize, usize),
+        interpolation: Interpolation,
+    ) -> Self {
+        Self {
+            data: None,
+            mesh_ids,
+            times_data,
+            transforms_data,
+            interpolation,
+        }
+    }
+}
+
 struct InitializedAnimationData {
-    lt_index: usize,
-    times: Option<Vec<f32>>,
+    lt_index: Option<usize>,
+    times: Vec<f32>,
+    transforms: Vec<AnimationTransform>,
 }
 
 #[derive(Debug)]
@@ -47,17 +49,4 @@ enum AnimationTransform {
     Rotation(cgmath::Vector4<f32>),
     Translation(cgmath::Vector4<f32>),
     Scale(cgmath::Vector4<f32>),
-}
-
-#[derive(Debug)]
-pub struct GltfAnimationData {
-    pub animation_components: Vec<GltfAnimationComponentData>,
-}
-
-#[derive(Debug)]
-pub struct GltfAnimationComponentData {
-    pub mesh_ids: Vec<usize>,
-    pub times_data: (usize, usize),
-    pub transforms_data: (usize, usize),
-    pub interpolation: Interpolation,
 }

@@ -3,25 +3,10 @@ use std::ops::Range;
 use gltf::Primitive;
 
 use crate::model::{
-    model::{AccessorDataType, UninitModelElement},
+    model::AccessorDataType,
     util::{get_primitive_data, GltfErrors, InitializationError},
     vertex::ModelVertex,
 };
-
-pub(super) struct UninitPrimitive {
-    position_offset: u32,
-    position_length: u32,
-    normal_offset: u32,
-    normal_length: u32,
-    pub indices_offset: u32,
-    pub indices_length: u32,
-}
-
-impl UninitModelElement<GPrimitive> for UninitPrimitive {
-    fn init(self) -> GPrimitive {
-        todo!()
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GPrimitive {
