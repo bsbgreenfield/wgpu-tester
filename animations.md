@@ -110,10 +110,65 @@ if the animation refers to N as its output, I know to add a new Animation to all
                              m1   m2  
 animation with n2 applies only to m1 and m2, while an animation with n1 applies to m1-m4
 
+## alernative data structure?
 
+for some reason I really want to implement the data structure for this in a sort of iterator pattern.
 
+the basic event chain is mostly the same
 
+update -> getAnimationFrame() 
+ -> query the scene animation controller
+```rust
+struct SceneAnimationController {
+    active_animations: Vec<usize>, // keep track of top level animations that are currently running
+    animations: Vec<Animation>,// or some hash map for object -> animations
+}
+```
+each animation refers to one full animation for some model.
 
+```rust
+struct Animation {
+    samplers: Vec<AnimationSampler>
+}
+```
+
+animations consist of one or more animation samplers
+the samplers are the parts of the animation. Each sampler will
+affect one or more mesh, and they each have a unique set of times and transforms
+
+```rust
+struct AnimationSampler {
+    type: AnimationType,
+    meshes: Vec<usize>,
+    times: Vec<usize>,
+    transforms: Vec<[f32;4]>
+}
+```
+this is where i want to implement interator. The process should be
+animationController -> get active animations -> for each active animation 
+-> query animation sampler for a transform
+
+So given a certain timestamp, animation sampler needs to return the correct transform. But its not like the next
+set of transforms to interpolate between is random, it proceeds from start to finish, and very frequently its just beween the same 
+two transforms as the last time it was queried. (and even more frequently its that or just one step further).
+To implement a binary search, or even some more clever searching method* seems wasteful.
+I want to just do 
+```rust
+for sampler in animation.sampers.iter_mut() {
+    sampler.next()
+}
+```
+where sampler.next just checks if the given timestamp is out of bounds for the current transform set 
+if it is scan further along the set of data to get the next two transforms, otherwise, the set is just stored in 
+sampler.current, although we obviusly still have to interpolate.
+So AnimationSampler needs to also store a current field which is something like
+
+```rust
+struct AnimationSample {
+    end_time: f32, // the last time at which this sample is valid
+    transform_index: usize, // why store a tuple or something if we are already storing the transforms in the parent vec
+}
+```
 
 
 

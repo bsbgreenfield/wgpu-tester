@@ -129,16 +129,25 @@ impl GSceneData {
     }
 
     pub fn new(mut gltf_data: GltfData) -> Self {
+        // build out vertex and index data from the models, meshes, and primitives by referencing
+        // the main blob
         let vertex_vec =
             Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
         let index_vec =
             Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
+        let scene_animation_data =
+            Self::get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
+
         Self {
             models: gltf_data.models,
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,
         }
+    }
+
+    fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec<u8>) {
+        todo!()
     }
 
     fn get_scene_vertex_buffer_data(

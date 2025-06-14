@@ -101,7 +101,7 @@ pub(super) fn load_models_from_gltf<'a>(
         // instantiate meshes, instantiate model
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
-        let g_model = GModel::new(None, meshes, model_mesh_data.mesh_instances);
+        let g_model = GModel::new(animation_data, meshes, model_mesh_data.mesh_instances);
 
         // add the local transformations to the running vec
         local_transform_data.extend(model_mesh_data.transformation_matrices);
