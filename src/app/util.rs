@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 
+use crate::scene::scene_scaffolds::BUGGY;
 #[allow(unused_imports)]
 use crate::{
     app::app_config::AppConfig,
@@ -68,5 +69,5 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    BRAIN.create(&app_config.device, aspect_ratio).unwrap()
+    BUGGY.create(&app_config.device, aspect_ratio).unwrap()
 }

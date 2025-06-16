@@ -8,21 +8,21 @@ use crate::{
 };
 #[allow(dead_code)]
 pub struct ScaffoldGlobalTransforms {
-    instance_index: usize,
-    model_index: usize,
-    transform: [[f32; 4]; 4],
+    pub instance_index: usize,
+    pub model_index: usize,
+    pub transform: [[f32; 4]; 4],
 }
 #[allow(dead_code)]
-pub struct ScaffoldModelInstances<'a> {
-    model_index: usize,
-    transform: &'a [[[f32; 4]; 4]],
+pub struct ScaffoldModelInstances {
+    pub model_index: usize,
+    instance_count: usize,
 }
 
 #[allow(dead_code)]
 pub struct SceneScaffold<'a> {
     file_paths: &'a [&'a str],
-    global_transforms: &'a [ScaffoldGlobalTransforms],
-    instances: &'a [ScaffoldModelInstances<'a>],
+    pub global_transforms: &'a [ScaffoldGlobalTransforms],
+    pub instances: &'a [ScaffoldModelInstances],
 }
 impl<'a> SceneScaffold<'a> {
     pub fn create(
@@ -34,15 +34,22 @@ impl<'a> SceneScaffold<'a> {
         let gltf_data: GltfData = GltfLoader::load_gltf(self.file_paths[0])
             .map_err(|_| InitializationError::SceneInitializationError)?; // onyl one file path??
         let scene_data = GSceneData::new(gltf_data);
-        let scene = scene_data.build_scene_init(device, aspect_ratio);
+        let scene = scene_data.build_scene_from_scaffold(device, aspect_ratio, self);
         Ok(scene)
     }
 }
 
 pub const CUBE: SceneScaffold = SceneScaffold {
     file_paths: &["box"],
-    global_transforms: &[],
-    instances: &[],
+    global_transforms: &[ScaffoldGlobalTransforms {
+        model_index: 0,
+        instance_index: 1,
+        transform: transforms::translation(5.0, 0.0, 0.0),
+    }],
+    instances: &[ScaffoldModelInstances {
+        model_index: 0,
+        instance_count: 2,
+    }],
 };
 pub const FOX: SceneScaffold = SceneScaffold {
     file_paths: &["fox"],

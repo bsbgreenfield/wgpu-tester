@@ -1,4 +1,7 @@
-use crate::{model::model::GModel, scene::util::calculate_model_mesh_offsets};
+use crate::{
+    model::model::GModel,
+    scene::{scene_scaffolds::SceneScaffold, util::calculate_model_mesh_offsets},
+};
 use cgmath::SquareMatrix;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
@@ -40,6 +43,50 @@ impl InstanceData {
             global_transform_data,
             instance_local_offsets,
         }
+    }
+
+    pub fn from_scaffold(
+        scaffold: &SceneScaffold,
+        local_transform_data: Vec<LocalTransform>,
+        models: &Vec<GModel>,
+    ) -> Self {
+        // TODO: allow for zero instances of a model
+        let model_instances: Vec<usize> = (0..models.len()).map(|_| 1).collect();
+        let global_transform_data: Vec<[[f32; 4]; 4]> = (0..models.len())
+            .into_iter()
+            .map(|_| cgmath::Matrix4::<f32>::identity().into())
+            .collect();
+        let instance_local_offsets: Vec<usize> = (0..models.len()).into_iter().map(|_| 0).collect();
+        let mut instance_data = InstanceData {
+            model_instances,
+            local_transform_buffer: None,
+            local_transform_data,
+            global_transform_buffer: None,
+            global_transform_data,
+            instance_local_offsets,
+        };
+        // not good!
+        for instance in scaffold.instances.iter() {
+            let gts: Vec<[[f32; 4]; 4]> = scaffold
+                .global_transforms
+                .iter()
+                .filter(|gt| gt.model_index == instance.model_index)
+                .map(|gt| gt.transform)
+                .collect();
+            let _ = instance_data.add_model_instance(models, instance.model_index, gts);
+        }
+        println!("{:?}", instance_data.model_instances);
+
+        for new_global_transform in scaffold.global_transforms.iter() {
+            let mut instance_index = 0;
+            for i in 0..new_global_transform.model_index {
+                instance_index += instance_data.model_instances[i];
+            }
+            instance_index += new_global_transform.instance_index;
+            instance_data.update_global_transform_x(instance_index, new_global_transform.transform);
+        }
+
+        instance_data
     }
 
     pub fn update_global_transform_x(&mut self, instance_idx: usize, new_transform: [[f32; 4]; 4]) {

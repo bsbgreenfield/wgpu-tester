@@ -2,6 +2,7 @@ use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
+use crate::scene::scene_scaffolds::SceneScaffold;
 use wgpu::util::DeviceExt;
 
 use super::camera::Camera;
@@ -110,6 +111,27 @@ pub struct GSceneData {
 impl GSceneData {
     pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene {
         let mut scene = self.build_scene_uninit();
+        scene.init(device, aspect_ratio);
+        scene
+    }
+
+    pub fn build_scene_from_scaffold(
+        self,
+        device: &wgpu::Device,
+        aspect_ratio: f32,
+        scaffold: &SceneScaffold,
+    ) -> GScene {
+        let instance_data =
+            InstanceData::from_scaffold(scaffold, self.local_transforms, &self.models);
+        let vertex_data = VertexData::from_data(self.vertex_vec);
+        let index_data = IndexData::from_data(self.index_vec);
+        let mut scene = GScene {
+            models: self.models,
+            vertex_data,
+            instance_data,
+            index_data,
+            camera: None,
+        };
         scene.init(device, aspect_ratio);
         scene
     }

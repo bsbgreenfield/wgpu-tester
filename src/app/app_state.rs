@@ -198,7 +198,7 @@ impl<'a> AppState<'a> {
 
     pub(super) fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
+        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.4));
         let new_t = rot.into();
         self.gscene.update_global_transform_x(0, new_t);
         self.app_config.queue.write_buffer(
