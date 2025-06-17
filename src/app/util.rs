@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::scene::scene_scaffolds::BUGGY;
+use crate::scene::scene_scaffolds::{BUGGY, CMAN, MONKEY};
 #[allow(unused_imports)]
 use crate::{
     app::app_config::AppConfig,

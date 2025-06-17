@@ -71,6 +71,11 @@ pub const DRAGON: SceneScaffold = SceneScaffold {
     global_transforms: &[],
     instances: &[],
 };
+pub const CMAN: SceneScaffold = SceneScaffold {
+    file_paths: &["cesium-man"],
+    global_transforms: &[],
+    instances: &[],
+};
 const fn buggy_shrink(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
     ScaffoldGlobalTransforms {
         instance_index,
@@ -99,5 +104,11 @@ pub const TRUCK_BOX: SceneScaffold = SceneScaffold {
 pub const BUGGY_BOX: SceneScaffold = SceneScaffold {
     file_paths: &["buggy", "milk-truck"],
     global_transforms: &[buggy_shrink(0, 0), move_right(0, 1)],
+    instances: &[],
+};
+
+pub const MONKEY: SceneScaffold = SceneScaffold {
+    file_paths: &["monkey"],
+    global_transforms: &[],
     instances: &[],
 };
