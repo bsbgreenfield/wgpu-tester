@@ -1,13 +1,14 @@
 use std::{
     fs::{self, ReadDir},
     path::PathBuf,
+    rc::Rc,
 };
 
 use cgmath::SquareMatrix;
 use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
 
 use crate::model::{
-    animation::{Animation, AnimationComponent, Interpolation},
+    animation::{Animation, AnimationComponent, AnimationSampler, Interpolation},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
@@ -18,26 +19,29 @@ enum NodeType {
     Node,
     Mesh,
 }
-struct GNode {
-    children: Vec<GNode>,
+struct AnimationNode {
+    children: Vec<AnimationNode>,
+    transform: [[f32; 4]; 4],
+    sampler: Option<Vec<AnimationSampler>>,
     node_type: NodeType,
     node_id: usize,
-    mesh_id: Option<usize>,
 }
-impl GNode {
-    fn new(node: &Node, children: Vec<GNode>) -> Self {
+impl AnimationNode {
+    fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
         match node.mesh() {
-            Some(mesh) => GNode {
+            Some(mesh) => AnimationNode {
                 children,
+                transform: node.transform().matrix(),
+                sampler: None,
                 node_type: NodeType::Mesh,
-                node_id: node.index(),
-                mesh_id: Some(mesh.index()),
+                node_id: mesh.index(),
             },
-            None => GNode {
+            None => AnimationNode {
                 children,
+                transform: node.transform().matrix(),
+                sampler: None,
                 node_type: NodeType::Node,
                 node_id: node.index(),
-                mesh_id: None,
             },
         }
     }
@@ -46,7 +50,7 @@ struct ModelMeshData {
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     transformation_matrices: Vec<LocalTransform>,
-    gnode: Option<GNode>,
+    gnode: Option<AnimationNode>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -66,12 +70,12 @@ pub(super) struct GltfBinaryExtras {
 }
 pub(super) type GltfFiles = (PathBuf, PathBuf, Option<GltfBinaryExtras>);
 
-fn build_node_tree(node: &gltf::Node) -> GNode {
-    let children: Vec<GNode> = node
+fn build_animation_node_tree(node: &gltf::Node) -> AnimationNode {
+    let children: Vec<AnimationNode> = node
         .children()
-        .map(|child| build_node_tree(&child))
+        .map(|child| build_animation_node_tree(&child))
         .collect();
-    GNode::new(node, children)
+    AnimationNode::new(node, children)
 }
 
 pub(super) fn load_models_from_gltf<'a>(
@@ -85,7 +89,7 @@ pub(super) fn load_models_from_gltf<'a>(
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
-        let gnode = build_node_tree(root_node); // for processing animations
+        let gnode = build_animation_node_tree(root_node); // for processing animations
 
         // animations
         let animation_data: Option<Vec<Animation>> = load_animations(&gnode, animations);
@@ -111,76 +115,79 @@ pub(super) fn load_models_from_gltf<'a>(
     (models, local_transform_data)
 }
 
-pub(super) fn load_animations(
-    gnode: &GNode,
+fn load_animations(
+    animation_node: &AnimationNode,
     animations: &gltf::iter::Animations,
 ) -> Option<Vec<Animation>> {
     let mut animations_vec: Vec<Animation> = Vec::new();
     for animation in animations.clone().into_iter() {
-        let mut animation_components = Vec::<AnimationComponent>::new();
-        // i dont understand how the gltf crate expects me to use the normal channels iter
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
-        for channel in channels.iter() {
-            let mut mesh_ids = Vec::<usize>::new();
-            let node_id: usize = channel.target().node().index();
-            println!("Searching for meshes that correspond to node {}", node_id);
-            find_meshes_for_animation(&gnode, node_id, &mut mesh_ids);
-            if mesh_ids.is_empty() {
-                return None;
-            }
-            let animation_uninit: AnimationComponent = AnimationComponent::new_uninit(
-                mesh_ids,
-                get_animation_times(&channel.sampler().input()),
-                get_animation_transforms(&channel.sampler().output()),
-                Interpolation::from(channel.sampler().interpolation()),
-            );
-            animation_components.push(animation_uninit);
-        }
-        animations_vec.push(Animation {
-            animation_components,
-        });
+
+        // let mut animation_components = Vec::<AnimationComponent>::new();
+        // // i dont understand how the gltf crate expects me to use the normal channels iter
+        // let channels: Vec<Channel> = animation.channels().into_iter().collect();
+        // for channel in channels.iter() {
+        //     let mut mesh_ids = Vec::<usize>::new();
+        //     let node_id: usize = channel.target().node().index();
+        //     println!("Searching for meshes that correspond to node {}", node_id);
+        //     find_meshes_for_animation(&animation_node, node_id, &mut mesh_ids);
+        //     if mesh_ids.is_empty() {
+        //         return None;
+        //     }
+        //     let animation_uninit: AnimationComponent = AnimationComponent::new_uninit(
+        //         mesh_ids,
+        //         get_animation_times(&channel.sampler().input()),
+        //         get_animation_transforms(&channel.sampler().output()),
+        //         Interpolation::from(channel.sampler().interpolation()),
+        //     );
+        //     animation_components.push(animation_uninit);
+        // }
+        // animations_vec.push(Animation {
+        //     animation_components,
+        // });
     }
     Some(animations_vec)
 }
 
-fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
-    assert_eq!(times_accessor.data_type(), DataType::F32);
-    let length = times_accessor.count() * 4;
-    let offset = times_accessor.offset() + (times_accessor.view().unwrap().offset());
-    (offset, length)
+fn attach_samplers(animation_node: AnimationNode, channels: Vec<Channel>) {
+    let relevant_channels: Vec<&Channel> = channels
+        .iter()
+        .filter(|c| c.target().node().index() == animation_node.node_id)
+        .collect();
+    if relevant_channels.len() > 0 {
+        let animation_sampler: AnimationSampler =
+            AnimationSampler::from_channels(relevant_channels);
+    }
 }
 
-fn get_animation_transforms(transforms_accessor: &gltf::Accessor) -> (usize, usize) {
-    assert_eq!(transforms_accessor.data_type(), DataType::F32);
-    let length = transforms_accessor.count() * 16;
-    let offset = transforms_accessor.offset() + (transforms_accessor.view().unwrap().offset());
-    (offset, length)
-}
-
-fn find_meshes_for_animation(gnode: &GNode, node_id: usize, mesh_ids: &mut Vec<usize>) {
-    if let Some(parent_node) = find_node(gnode, node_id) {
+fn find_meshes_for_animation(
+    animation_node: &AnimationNode,
+    node_id: usize,
+    mesh_ids: &mut Vec<usize>,
+) {
+    if let Some(parent_node) = find_node(animation_node, node_id) {
         println!("found node {}", parent_node.node_id);
         find_meshes_under_node(parent_node, mesh_ids);
     } else {
         return;
     }
 }
-fn find_node(gnode: &GNode, node_id: usize) -> Option<&GNode> {
-    println!("visiting node {}", gnode.node_id);
-    if gnode.node_id == node_id {
-        return Some(gnode);
+fn find_node(animation_node: &AnimationNode, node_id: usize) -> Option<&AnimationNode> {
+    println!("visiting node {}", animation_node.node_id);
+    if animation_node.node_id == node_id {
+        return Some(animation_node);
     }
-    for child in gnode.children.iter() {
+    for child in animation_node.children.iter() {
         return find_node(child, node_id);
     }
     None
 }
 
-fn find_meshes_under_node(gnode: &GNode, mesh_ids: &mut Vec<usize>) {
-    match gnode.node_type {
-        NodeType::Mesh => mesh_ids.push(gnode.mesh_id.unwrap()),
+fn find_meshes_under_node(animation_node: &AnimationNode, mesh_ids: &mut Vec<usize>) {
+    match animation_node.node_type {
+        NodeType::Mesh => mesh_ids.push(animation_node.node_id),
         NodeType::Node => {
-            for child in gnode.children.iter() {
+            for child in animation_node.children.iter() {
                 find_meshes_under_node(child, mesh_ids);
             }
         }

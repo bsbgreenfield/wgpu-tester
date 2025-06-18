@@ -55,7 +55,7 @@ optimizations are:
 2. make sure that its really fast to update the local transform data vec with the new transforms for the current frame
 3. make sure that its really fast to create and assign the new lt buffer
 
-theoretically both 1 and 2 could be async, and creating the new lt buffer can happen only once 
+theoretically both 1 and 2 could beasync, and creating the new lt buffer can happen only once 
 every value in the lt data vec has been successsfully updated, for which updates would happen as soon as an 
 Animation has finished calculating its interpolated value and doing the matrix multiplication at the 
 correct index.
@@ -167,6 +167,39 @@ So AnimationSampler needs to also store a current field which is something like
 struct AnimationSample {
     end_time: f32, // the last time at which this sample is valid
     transform_index: usize, // why store a tuple or something if we are already storing the transforms in the parent vec
+}
+```
+
+
+we also need to correctly apply these transforms. This is for the SimpleAnimation type, which directly 
+updates the local transforms of the various mesh instances. Unlike skeletal animations, we dont need 
+any inverse bind matrices. We do, however, need to walk the node tree again to calculate the new transforms each frame
+
+for a node tree where n_ is a node and m_ is a mesh,
+
+       n1
+      /  \
+     n2   m2
+    /
+   m1
+
+if an animation affects, for example, n2, m1's local transform will be 
+   trans(n1) * ( trans(n2) * animation_trans ) * trans(mesh)
+
+if there was also an animation on n1, m2's transform would be
+       trans(n1) * animation_n1 * trans(m2)
+and for m1
+    ( trans(n1) * animation_n1 ) * ( trans(n2) * animation_trans ) * trans(mesh)  
+
+we can maybe do everything in one pass, if we store the root node for a model in SimpleAnimation
+
+```rust
+impl SimpleAnimation {
+    fn get_transforms(&self, timestamp: f32, base_translatrion: LocalTransform ,&mut Vec<LocalTransform>)  {
+         
+        
+
+    }
 }
 ```
 
