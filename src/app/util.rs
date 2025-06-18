@@ -69,5 +69,7 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    BUGGY.create(&app_config.device, aspect_ratio).unwrap()
+    BOX_ANIMATED
+        .create(&app_config.device, aspect_ratio)
+        .unwrap()
 }

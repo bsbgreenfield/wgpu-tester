@@ -1,4 +1,5 @@
 use super::util::GltfErrors;
+use crate::model::animation::AnimationNode;
 use crate::model::vertex::ModelVertex;
 use crate::model::{animation::Animation, primitive::GPrimitive};
 use crate::scene::scene::GScene;
@@ -16,19 +17,19 @@ pub enum AccessorDataType {
 // so that scene can access them, but I may want to work with
 // modesls independently later
 pub struct GModel {
-    pub animation_data: Option<Vec<Animation>>,
+    pub animation_nodes: Option<Vec<AnimationNode>>,
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
 }
 
 impl GModel {
     pub(super) fn new(
-        animation_data: Option<Vec<Animation>>,
+        animation_nodes: Option<Vec<AnimationNode>>,
         meshes: Vec<GMesh>,
         mesh_instances: Vec<u32>,
     ) -> Self {
         Self {
-            animation_data,
+            animation_nodes,
             meshes,
             mesh_instances,
         }

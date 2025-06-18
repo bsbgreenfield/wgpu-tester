@@ -8,49 +8,20 @@ use cgmath::SquareMatrix;
 use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
 
 use crate::model::{
-    animation::{Animation, AnimationComponent, AnimationSampler, Interpolation},
+    animation::{
+        attach_samplers, Animation, AnimationComponent, AnimationNode, AnimationSampler,
+        Interpolation,
+    },
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
 
-#[derive(Debug)]
-enum NodeType {
-    Node,
-    Mesh,
-}
-struct AnimationNode {
-    children: Vec<AnimationNode>,
-    transform: [[f32; 4]; 4],
-    sampler: Option<Vec<AnimationSampler>>,
-    node_type: NodeType,
-    node_id: usize,
-}
-impl AnimationNode {
-    fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
-        match node.mesh() {
-            Some(mesh) => AnimationNode {
-                children,
-                transform: node.transform().matrix(),
-                sampler: None,
-                node_type: NodeType::Mesh,
-                node_id: mesh.index(),
-            },
-            None => AnimationNode {
-                children,
-                transform: node.transform().matrix(),
-                sampler: None,
-                node_type: NodeType::Node,
-                node_id: node.index(),
-            },
-        }
-    }
-}
 struct ModelMeshData {
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     transformation_matrices: Vec<LocalTransform>,
-    gnode: Option<AnimationNode>,
+    animation_node: Option<AnimationNode>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -58,7 +29,7 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             transformation_matrices: Vec::new(),
-            gnode: None,
+            animation_node: None,
         }
     }
 }
@@ -89,10 +60,9 @@ pub(super) fn load_models_from_gltf<'a>(
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
-        let gnode = build_animation_node_tree(root_node); // for processing animations
 
-        // animations
-        let animation_data: Option<Vec<Animation>> = load_animations(&gnode, animations);
+        // get a animation node trees
+        let animation_nodes = load_animations(&root_node, animations);
 
         // mesh data
         model_mesh_data = find_model_meshes(
@@ -100,12 +70,19 @@ pub(super) fn load_models_from_gltf<'a>(
             cgmath::Matrix4::<f32>::identity(),
             model_mesh_data,
         );
-        model_mesh_data.gnode = Some(gnode);
 
         // instantiate meshes, instantiate model
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
-        let g_model = GModel::new(animation_data, meshes, model_mesh_data.mesh_instances);
+        let maybe_animation_nodes = match animation_nodes.len() {
+            0 => None,
+            _ => Some(animation_nodes),
+        };
+        let g_model = GModel::new(
+            maybe_animation_nodes,
+            meshes,
+            model_mesh_data.mesh_instances,
+        );
 
         // add the local transformations to the running vec
         local_transform_data.extend(model_mesh_data.transformation_matrices);
@@ -115,84 +92,59 @@ pub(super) fn load_models_from_gltf<'a>(
     (models, local_transform_data)
 }
 
+/// for each animation associated with a model, create an animation node tree.
+/// each node tree will contain the samplers for one aniamtion.
+/// when an animation is active for a model, the animation controller will traverse the
+/// correct tree to calculate the new transforms.
 fn load_animations(
-    animation_node: &AnimationNode,
+    root_node: &gltf::Node,
     animations: &gltf::iter::Animations,
-) -> Option<Vec<Animation>> {
-    let mut animations_vec: Vec<Animation> = Vec::new();
+) -> Vec<AnimationNode> {
+    let mut animation_nodes: Vec<AnimationNode> = Vec::new();
     for animation in animations.clone().into_iter() {
+        // create a new tree where all nodes have sampler: None
+        let mut animation_node = build_animation_node_tree(root_node);
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
-
-        // let mut animation_components = Vec::<AnimationComponent>::new();
-        // // i dont understand how the gltf crate expects me to use the normal channels iter
-        // let channels: Vec<Channel> = animation.channels().into_iter().collect();
-        // for channel in channels.iter() {
-        //     let mut mesh_ids = Vec::<usize>::new();
-        //     let node_id: usize = channel.target().node().index();
-        //     println!("Searching for meshes that correspond to node {}", node_id);
-        //     find_meshes_for_animation(&animation_node, node_id, &mut mesh_ids);
-        //     if mesh_ids.is_empty() {
-        //         return None;
-        //     }
-        //     let animation_uninit: AnimationComponent = AnimationComponent::new_uninit(
-        //         mesh_ids,
-        //         get_animation_times(&channel.sampler().input()),
-        //         get_animation_transforms(&channel.sampler().output()),
-        //         Interpolation::from(channel.sampler().interpolation()),
-        //     );
-        //     animation_components.push(animation_uninit);
-        // }
-        // animations_vec.push(Animation {
-        //     animation_components,
-        // });
+        // traverse the tree and assign the correct samplers
+        attach_samplers(&mut animation_node, &channels);
+        animation_nodes.push(animation_node);
     }
-    Some(animations_vec)
+    return animation_nodes;
 }
 
-fn attach_samplers(animation_node: AnimationNode, channels: Vec<Channel>) {
-    let relevant_channels: Vec<&Channel> = channels
-        .iter()
-        .filter(|c| c.target().node().index() == animation_node.node_id)
-        .collect();
-    if relevant_channels.len() > 0 {
-        let animation_sampler: AnimationSampler =
-            AnimationSampler::from_channels(relevant_channels);
-    }
-}
-
-fn find_meshes_for_animation(
-    animation_node: &AnimationNode,
-    node_id: usize,
-    mesh_ids: &mut Vec<usize>,
-) {
-    if let Some(parent_node) = find_node(animation_node, node_id) {
-        println!("found node {}", parent_node.node_id);
-        find_meshes_under_node(parent_node, mesh_ids);
-    } else {
-        return;
-    }
-}
-fn find_node(animation_node: &AnimationNode, node_id: usize) -> Option<&AnimationNode> {
-    println!("visiting node {}", animation_node.node_id);
-    if animation_node.node_id == node_id {
-        return Some(animation_node);
-    }
-    for child in animation_node.children.iter() {
-        return find_node(child, node_id);
-    }
-    None
-}
-
-fn find_meshes_under_node(animation_node: &AnimationNode, mesh_ids: &mut Vec<usize>) {
-    match animation_node.node_type {
-        NodeType::Mesh => mesh_ids.push(animation_node.node_id),
-        NodeType::Node => {
-            for child in animation_node.children.iter() {
-                find_meshes_under_node(child, mesh_ids);
-            }
-        }
-    }
-}
+//fn find_meshes_for_animation(
+//    animation_node: &AnimationNode,
+//    node_id: usize,
+//    mesh_ids: &mut Vec<usize>,
+//) {
+//    if let Some(parent_node) = find_node(animation_node, node_id) {
+//        println!("found node {}", parent_node.node_id);
+//        find_meshes_under_node(parent_node, mesh_ids);
+//    } else {
+//        return;
+//    }
+//}
+//fn find_node(animation_node: &AnimationNode, node_id: usize) -> Option<&AnimationNode> {
+//    println!("visiting node {}", animation_node.node_id);
+//    if animation_node.node_id == node_id {
+//        return Some(animation_node);
+//    }
+//    for child in animation_node.children.iter() {
+//        return find_node(child, node_id);
+//    }
+//    None
+//}
+//
+//fn find_meshes_under_node(animation_node: &AnimationNode, mesh_ids: &mut Vec<usize>) {
+//    match animation_node.node_type {
+//        NodeType::Mesh => mesh_ids.push(animation_node.node_id),
+//        NodeType::Node => {
+//            for child in animation_node.children.iter() {
+//                find_meshes_under_node(child, mesh_ids);
+//            }
+//        }
+//    }
+//}
 
 /// recurse through the root node to get data on transformations, mesh indices, and mesh
 /// instances

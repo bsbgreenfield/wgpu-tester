@@ -3,9 +3,10 @@ use std::{ops::Range, rc::Rc, thread::current};
 use gltf::{
     accessor::{DataType, Iter},
     animation::Channel,
+    Node,
 };
 
-use crate::model::model::LocalTransform;
+use crate::{model::model::LocalTransform, transforms};
 
 pub struct Animation {
     pub animation_components: Vec<AnimationComponent>,
@@ -46,6 +47,51 @@ impl From<gltf::animation::Interpolation> for Interpolation {
         }
     }
 }
+#[derive(Debug)]
+pub enum NodeType {
+    Node,
+    Mesh,
+}
+pub struct AnimationNode {
+    pub children: Vec<AnimationNode>,
+    transform: [[f32; 4]; 4],
+    pub samplers: Option<Vec<AnimationSampler>>,
+    node_type: NodeType,
+    node_id: usize,
+    mesh_id: Option<usize>,
+}
+impl AnimationNode {
+    pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
+        match node.mesh() {
+            Some(mesh) => AnimationNode {
+                children,
+                transform: node.transform().matrix(),
+                samplers: None,
+                node_type: NodeType::Mesh,
+                node_id: node.index(),
+                mesh_id: Some(node.mesh().unwrap().index()),
+            },
+            None => AnimationNode {
+                children,
+                transform: node.transform().matrix(),
+                samplers: None,
+                node_type: NodeType::Node,
+                node_id: node.index(),
+                mesh_id: None,
+            },
+        }
+    }
+
+    pub fn print(&self) {
+        println!("node {} with sampler {:?}", self.node_id, self.samplers);
+        if self.children.len() > 0 {
+            println!("children of this node:");
+            for child in self.children.iter() {
+                child.print();
+            }
+        }
+    }
+}
 
 /// Keeps track of which animations are currently playing.
 /// The controllers functions are
@@ -81,7 +127,9 @@ impl SimpleAnimation {
         }
     }
 }
-enum AnimationType {
+
+#[derive(Debug)]
+pub enum AnimationType {
     Rotation,
     Translation,
     Scale,
@@ -99,18 +147,35 @@ impl AnimationType {
         }
     }
 }
+
+#[derive(Debug)]
 pub struct AnimationSampler {
-    animation_type: AnimationType,
+    pub animation_type: AnimationType,
     interpolation: Interpolation,
     /// the affected node
-    times: Vec<f32>,
-    transforms: Vec<[f32; 4]>,
+    pub times: Vec<f32>,
+    pub transforms: Vec<[f32; 4]>,
     current: Option<AnimationSample>,
 }
 
+#[derive(Debug)]
 struct AnimationSample {
     end_time: f32,
     transform_index: usize,
+}
+pub fn attach_samplers(animation_node: &mut AnimationNode, channels: &Vec<Channel>) {
+    let relevant_channels: Vec<&Channel> = channels
+        .iter()
+        .filter(|c| c.target().node().index() == animation_node.node_id)
+        .collect();
+    if relevant_channels.len() > 0 {
+        let animation_samplers: Vec<AnimationSampler> =
+            AnimationSampler::from_channels(relevant_channels);
+        animation_node.samplers = Some(animation_samplers);
+    }
+    for node_child in animation_node.children.iter_mut() {
+        attach_samplers(node_child, channels);
+    }
 }
 
 fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
@@ -120,9 +185,19 @@ fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
     (offset, length)
 }
 
-fn get_animation_transforms(transforms_accessor: &gltf::Accessor) -> (usize, usize) {
+fn get_animation_transforms(
+    transforms_accessor: &gltf::Accessor,
+    animation_type: &gltf::animation::Property,
+) -> (usize, usize) {
     assert_eq!(transforms_accessor.data_type(), DataType::F32);
-    let length = transforms_accessor.count() * 16;
+    let length = match *animation_type {
+        gltf::animation::Property::Rotation => transforms_accessor.count() * 16, // there should be
+        // 16 bytes of data
+        gltf::animation::Property::Translation => transforms_accessor.count() * 12, // there should
+        // be 123 bytes of data
+        _ => todo!("havent implemented scale or morph yet"),
+    };
+
     let offset = transforms_accessor.offset() + (transforms_accessor.view().unwrap().offset());
     (offset, length)
 }
@@ -133,12 +208,13 @@ impl AnimationSampler {
             let animation_type = AnimationType::from(&channel.target().property());
             let interpolation = Interpolation::from(channel.sampler().interpolation());
             let times = get_animation_times(&channel.sampler().input());
-            let transforms = get_animation_transforms(&channel.sampler().output());
+            let transforms =
+                get_animation_transforms(&channel.sampler().output(), &channel.target().property());
             let sampler = AnimationSampler {
                 animation_type,
                 interpolation,
-                times,
-                transforms,
+                times: vec![times.0 as f32, times.1 as f32],
+                transforms: vec![[transforms.0 as f32, transforms.1 as f32, 0f32, 0f32]],
                 current: None,
             };
             samplers.push(sampler);
