@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::model::animation::AnimationNode;
+use crate::model::animation::AnimationSampler;
 use crate::model::animation::AnimationType;
 use crate::model::animation::SceneAnimationController;
+use crate::model::animation::SimpleAnimation;
 use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
@@ -112,6 +117,7 @@ pub struct GSceneData {
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
+    simple_animations: Vec<SimpleAnimation>,
 }
 
 impl GSceneData {
@@ -125,6 +131,7 @@ impl GSceneData {
             InstanceData::default_from_scene(self.models.len(), self.local_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
+        let animation_controller = SceneAnimationController::new(self.simple_animations);
 
         GScene {
             models: self.models,
@@ -132,6 +139,7 @@ impl GSceneData {
             instance_data,
             index_data,
             camera: None,
+            animation_controller,
         }
     }
 
@@ -142,69 +150,76 @@ impl GSceneData {
             Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
         let index_vec =
             Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
-        Self::get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
-        for model in gltf_data.models.iter() {
-            match &model.animation_nodes {
-                Some(n) => n.iter().for_each(|an| an.print()),
-                None => println!("no animations for this model"),
-            }
-        }
+        let simple_animations =
+            Self::get_scene_animation_data(gltf_data.simple_animations, &gltf_data.binary_data);
 
         Self {
             models: gltf_data.models,
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,
+            simple_animations,
         }
     }
     /// for each mdoel with one or more animation nodes, extract the times and translations data
     /// from the main blob and put them in the relevant samplers.
-    fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec<u8>) {
-        for model in models.iter_mut() {
-            match &mut model.animation_nodes {
-                Some(nodes) => {
-                    for node in nodes.iter_mut() {
-                        Self::get_data_for_node(node, &main_buffer_data);
-                    }
-                }
-                None => continue,
-            }
+    fn get_scene_animation_data(
+        mut simple_animations: Vec<SimpleAnimation>,
+        main_buffer_data: &Vec<u8>,
+    ) -> Vec<SimpleAnimation> {
+        for animation in simple_animations.iter_mut() {
+            let exvlusive_node_reference: &mut AnimationNode =
+                Rc::get_mut(&mut animation.animation_node)
+                    .expect("this should be the only reference to the node");
+            Self::copy_data_for_animation(
+                exvlusive_node_reference,
+                animation.model_id,
+                main_buffer_data,
+            );
         }
+        simple_animations
     }
-
-    fn get_data_for_node(animation_node: &mut AnimationNode, main_buffer_data: &Vec<u8>) {
-        if let Some(samplers) = &mut animation_node.samplers {
-            for sampler in samplers.iter_mut() {
-                let times_slice = bytemuck::cast_slice::<u8, f32>(
-                    &main_buffer_data[(sampler.times[0] as usize)
-                        ..((sampler.times[0] + sampler.times[1]) as usize)],
-                );
-                match sampler.animation_type {
-                    AnimationType::Rotation => {
-                        let transforms_slice = bytemuck::cast_slice::<u8, [f32; 4]>(
-                            &main_buffer_data[(sampler.transforms[0][0] as usize)
-                                ..((sampler.transforms[0][0] + sampler.transforms[0][1]) as usize)],
-                        );
-                        sampler.transforms = transforms_slice.to_vec();
-                    }
-                    AnimationType::Translation => {
-                        let mut padded_slices: Vec<[f32; 4]> = Vec::new();
-                        let transforms_slice = bytemuck::cast_slice::<u8, [f32; 3]>(
-                            &main_buffer_data[(sampler.transforms[0][0] as usize)
-                                ..((sampler.transforms[0][0] + sampler.transforms[0][1]) as usize)],
-                        );
-                        for slice in transforms_slice.iter() {
-                            padded_slices.push([slice[0], slice[1], slice[2], 0.0]);
+    fn copy_data_for_animation(
+        animation_node: &mut AnimationNode,
+        model_id: usize,
+        main_buffer_data: &Vec<u8>,
+    ) {
+        if let Some(sampler_map) = &mut animation_node.samplers {
+            for sample_set in sampler_map {
+                for sampler in sample_set.1 {
+                    let times_slice = bytemuck::cast_slice::<u8, f32>(
+                        &main_buffer_data[(sampler.times[0] as usize)
+                            ..((sampler.times[0] + sampler.times[1]) as usize)],
+                    );
+                    match sampler.animation_type {
+                        AnimationType::Rotation => {
+                            let transforms_slice = bytemuck::cast_slice::<u8, [f32; 4]>(
+                                &main_buffer_data[(sampler.transforms[0][0] as usize)
+                                    ..((sampler.transforms[0][0] + sampler.transforms[0][1])
+                                        as usize)],
+                            );
+                            sampler.transforms = transforms_slice.to_vec();
                         }
-                        sampler.transforms = padded_slices;
+                        AnimationType::Translation => {
+                            let mut padded_slices: Vec<[f32; 4]> = Vec::new();
+                            let transforms_slice = bytemuck::cast_slice::<u8, [f32; 3]>(
+                                &main_buffer_data[(sampler.transforms[0][0] as usize)
+                                    ..((sampler.transforms[0][0] + sampler.transforms[0][1])
+                                        as usize)],
+                            );
+                            for slice in transforms_slice.iter() {
+                                padded_slices.push([slice[0], slice[1], slice[2], 0.0]);
+                            }
+                            sampler.transforms = padded_slices;
+                        }
+                        _ => todo!("havent implemented this type of animation yet (scale?)"),
                     }
-                    _ => todo!("havent implemented this type of animation yet (scale?)"),
+                    sampler.times = times_slice.to_vec();
                 }
-                sampler.times = times_slice.to_vec();
             }
         }
         for child_node in animation_node.children.iter_mut() {
-            Self::get_data_for_node(child_node, &main_buffer_data);
+            Self::copy_data_for_animation(child_node, model_id, main_buffer_data);
         }
     }
 

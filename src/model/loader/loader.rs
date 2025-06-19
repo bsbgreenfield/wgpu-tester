@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::model::{
+    animation::SimpleAnimation,
     loader::util::{get_data_files, get_root_nodes, load_models_from_gltf},
     model::{GModel, LocalTransform},
 };
@@ -26,12 +27,13 @@ impl GltfLoader {
         let binary_data = std::fs::read(files.1).map_err(|e| GltfFileLoadError::IoErr(e))?;
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
         let nodes = gltf.nodes();
-        let (models, local_transforms) =
+        let (models, local_transforms, simple_animations) =
             load_models_from_gltf(root_node_ids, nodes, &gltf.animations());
         let gltf_data = GltfData {
             models,
             binary_data,
             local_transforms,
+            simple_animations,
         };
 
         Ok(gltf_data)
@@ -42,6 +44,7 @@ pub struct GltfData {
     pub models: Vec<GModel>,
     pub binary_data: Vec<u8>,
     pub local_transforms: Vec<LocalTransform>,
+    pub simple_animations: Vec<SimpleAnimation>,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use cgmath::{Quaternion, SquareMatrix, Vector3, Zero};
 use gltf::{
@@ -6,8 +6,26 @@ use gltf::{
     animation::Channel,
     Node,
 };
+#[derive(Debug, Clone, Copy)]
+pub enum AnimationType {
+    Rotation,
+    Translation,
+    Scale,
+    // others?
+}
 
-#[derive(Debug)]
+impl AnimationType {
+    fn from(property: &gltf::animation::Property) -> Self {
+        use gltf::animation::Property;
+        match property {
+            Property::Translation => AnimationType::Translation,
+            Property::Rotation => AnimationType::Rotation,
+            Property::Scale => AnimationType::Rotation,
+            Property::MorphTargetWeights => todo!(),
+        }
+    }
+}
+#[derive(Debug, Clone, Copy)]
 pub enum Interpolation {
     Linear,
 }
@@ -24,15 +42,69 @@ pub enum NodeType {
     Node,
     Mesh,
 }
+
+type ModelAnimationMap = HashMap<usize, Vec<AnimationSampler>>;
 pub struct AnimationNode {
     pub children: Vec<AnimationNode>,
     transform: cgmath::Matrix4<f32>,
-    pub samplers: Option<Vec<AnimationSampler>>,
+    pub samplers: Option<ModelAnimationMap>,
     node_type: NodeType,
     node_id: usize,
     mesh_id: Option<usize>,
 }
 impl AnimationNode {
+    fn initialize_sampled_transforms(&self, transforms: &mut Vec<[[f32; 4]; 4]>) {
+        if self.samplers.is_some() {
+            transforms.push(self.transform.clone().into());
+        }
+        for child in self.children.iter() {
+            child.initialize_sampled_transforms(transforms);
+        }
+    }
+
+    fn add_sampler_set(&mut self, animation_index: usize, samplers: Vec<AnimationSampler>) {
+        match &mut self.samplers {
+            Some(sampler_map) => {
+                if let Some(sampler_set) = sampler_map.get_mut(&animation_index) {
+                    //TODO: return a result
+                    panic!("we already assigned the samplers for this animation!");
+                } else {
+                    sampler_map.insert(animation_index, samplers);
+                }
+            }
+            None => {
+                let mut new_map: HashMap<usize, Vec<AnimationSampler>> = HashMap::new();
+                new_map.insert(animation_index, samplers);
+                self.samplers = Some(new_map);
+            }
+        }
+    }
+
+    fn update_mesh_transforms(
+        &self,
+        new_transforms: &mut Vec<[[f32; 4]; 4]>,
+        instance: &AnimationInstance,
+    ) {
+        let mut rotation: Option<cgmath::Quaternion<f32>> = None;
+        let mut translation: Option<cgmath::Vector3<f32>> = None;
+        let mut scale: Option<cgmath::Matrix4<f32>> = None;
+        if let Some(sample_map) = &self.samplers {
+            if let Some(sample_set) = sample_map.get(&instance.animation_index) {
+                for sampler in sample_set {
+                    if let Some(current_sample) = &instance.current {
+                        let first_transform = sampler.transforms[current_sample.transform_index];
+                        let second_transform =
+                            sampler.transforms[current_sample.transform_index + 1];
+                        let amount: f32 = (instance.time_elapsed
+                            - sampler.times[current_sample.transform_index])
+                            / (sampler.times[current_sample.transform_index + 1]
+                                - sampler.times[current_sample.transform_index])
+                            - sampler.times[current_sample.transform_index];
+                    }
+                }
+            }
+        }
+    }
     /// given the current Animation Sample,
     /// get the interpolated transform that should
     /// be applied to the meshes
@@ -115,36 +187,63 @@ pub struct AnimationFrame {
     transforms: Vec<(usize, [[f32; 4]; 4])>,
 }
 
+struct AnimationInstance {
+    /// the node tree for the model
+    animation_node: Rc<AnimationNode>,
+    time_elapsed: f32,
+    /// global index of the animation as defined in the gltf file
+    animation_index: usize,
+    /// the set of transforms affected by the samplers
+    /// of this instances node tree
+    mesh_transforms: Vec<[[f32; 4]; 4]>,
+    ///
+    current: Option<AnimationSample>,
+}
+
+impl AnimationInstance {
+    fn process_animation_frame(&mut self, timestamp: f32) {
+        todo!()
+    }
+}
+
 /// Keeps track of which animations are currently playing.
 /// The controllers functions are
 /// 1. adding or removing active animation indices based on user input and time
 /// 2. owning all animation structs
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
-    active_animations: Vec<usize>,
+    active_animations: Vec<AnimationInstance>,
     active_model_instances: Vec<usize>,
     animations: Vec<SimpleAnimation>,
 }
 
 impl SceneAnimationController {
-    pub fn new() -> Self {
+    pub fn new(animations: Vec<SimpleAnimation>) -> Self {
         Self {
             active_animations: vec![],
             active_model_instances: vec![],
-            animations: vec![],
+            animations,
         }
     }
-    fn animate(&mut self, timestamp: f32) {
-        for i in &mut self.active_animations {
-            let mut animation_frame = AnimationFrame {
-                model_id: self.active_model_instances[*i],
-                transforms: Vec::new(),
-            };
-            get_animation_frame(
-                &mut self.animations[*i].root_node,
-                timestamp,
-                &mut animation_frame,
-            );
+
+    pub fn initiate_animation(&mut self, animation_index: usize) {
+        // clone a shared reference to the animation node tree
+        let animation_node = self.animations[animation_index].animation_node.clone();
+        // get copies of the initial state of the animated nodes
+        let mut sampled_transforms: Vec<[[f32; 4]; 4]> = Vec::new();
+        &animation_node.initialize_sampled_transforms(&mut sampled_transforms);
+        let animation_instance = AnimationInstance {
+            animation_node,
+            time_elapsed: 0f32,
+            animation_index,
+            sampled_transforms,
+        };
+        self.active_animations.push(animation_instance);
+    }
+
+    pub fn do_animations(&mut self, timestamp: f32) {
+        for animation_instance in self.active_animations.iter_mut() {
+            animation_instance.process_animation_frame(timestamp);
         }
     }
 }
@@ -167,25 +266,15 @@ fn get_animation_frame(
     }
 }
 
-struct SimpleAnimation {
-    root_node: AnimationNode,
+pub struct SimpleAnimation {
+    pub animation_node: Rc<AnimationNode>,
+    pub model_id: usize,
 }
-#[derive(Debug)]
-pub enum AnimationType {
-    Rotation,
-    Translation,
-    Scale,
-    // others?
-}
-
-impl AnimationType {
-    fn from(property: &gltf::animation::Property) -> Self {
-        use gltf::animation::Property;
-        match property {
-            Property::Translation => AnimationType::Translation,
-            Property::Rotation => AnimationType::Rotation,
-            Property::Scale => AnimationType::Rotation,
-            Property::MorphTargetWeights => todo!(),
+impl SimpleAnimation {
+    pub fn new(animation_node: AnimationNode, model_id: usize) -> Self {
+        Self {
+            animation_node: Rc::new(animation_node),
+            model_id,
         }
     }
 }
@@ -193,11 +282,10 @@ impl AnimationType {
 #[derive(Debug)]
 pub struct AnimationSampler {
     pub animation_type: AnimationType,
-    interpolation: Interpolation,
+    pub interpolation: Interpolation,
     /// the affected node
     pub times: Vec<f32>,
     pub transforms: Vec<[f32; 4]>,
-    current: Option<AnimationSample>,
 }
 
 #[derive(Debug)]
@@ -205,18 +293,61 @@ struct AnimationSample {
     end_time: f32,
     transform_index: usize,
 }
-pub fn attach_samplers(animation_node: &mut AnimationNode, channels: &Vec<Channel>) {
+impl AnimationSampler {
+    pub fn from_channels(channels: &Vec<&Channel>) -> Option<Vec<Self>> {
+        let mut samplers: Vec<AnimationSampler> = Vec::new();
+        for channel in channels.iter() {
+            let animation_type = AnimationType::from(&channel.target().property());
+            let interpolation = Interpolation::from(channel.sampler().interpolation());
+            let times = get_animation_times(&channel.sampler().input());
+            let transforms =
+                get_animation_transforms(&channel.sampler().output(), &channel.target().property());
+            let sampler = AnimationSampler {
+                animation_type,
+                interpolation,
+                times: vec![times.0 as f32, times.1 as f32],
+                transforms: vec![[transforms.0 as f32, transforms.1 as f32, 0f32, 0f32]],
+            };
+            samplers.push(sampler);
+        }
+        if samplers.len() > 0 {
+            return Some(samplers);
+        } else {
+            return None;
+        }
+    }
+
+    fn sample(&mut self, timestamp: f32) {
+        if timestamp <= self.current.as_ref().unwrap().end_time {
+            return;
+        }
+        let idx = self.current.as_ref().unwrap().transform_index + 1;
+        for i in idx..self.times.len() {
+            if self.times[idx] > timestamp {
+                self.current = Some(AnimationSample {
+                    end_time: self.times[i],
+                    transform_index: i,
+                });
+                return;
+            }
+        }
+        self.current = None;
+    }
+}
+/// for a given animation defined by a set of Channels
+
+pub fn attach_sampler_sets(animation_node: &mut AnimationNode, channels: &Vec<Channel>) {
     let relevant_channels: Vec<&Channel> = channels
         .iter()
         .filter(|c| c.target().node().index() == animation_node.node_id)
         .collect();
-    if relevant_channels.len() > 0 {
-        let animation_samplers: Vec<AnimationSampler> =
-            AnimationSampler::from_channels(relevant_channels);
-        animation_node.samplers = Some(animation_samplers);
+    let maybe_samplers: Option<Vec<AnimationSampler>> =
+        AnimationSampler::from_channels(&relevant_channels);
+    if let Some(samplers) = maybe_samplers {
+        animation_node.add_sampler_set(channels[0].animation().index(), samplers);
     }
     for node_child in animation_node.children.iter_mut() {
-        attach_samplers(node_child, channels);
+        attach_sampler_sets(node_child, channels);
     }
 }
 
@@ -242,42 +373,4 @@ fn get_animation_transforms(
 
     let offset = transforms_accessor.offset() + (transforms_accessor.view().unwrap().offset());
     (offset, length)
-}
-impl AnimationSampler {
-    pub fn from_channels(channels: Vec<&gltf::animation::Channel>) -> Vec<Self> {
-        let mut samplers: Vec<AnimationSampler> = Vec::new();
-        for channel in channels.iter() {
-            let animation_type = AnimationType::from(&channel.target().property());
-            let interpolation = Interpolation::from(channel.sampler().interpolation());
-            let times = get_animation_times(&channel.sampler().input());
-            let transforms =
-                get_animation_transforms(&channel.sampler().output(), &channel.target().property());
-            let sampler = AnimationSampler {
-                animation_type,
-                interpolation,
-                times: vec![times.0 as f32, times.1 as f32],
-                transforms: vec![[transforms.0 as f32, transforms.1 as f32, 0f32, 0f32]],
-                current: None,
-            };
-            samplers.push(sampler);
-        }
-        samplers
-    }
-
-    fn sample(&mut self, timestamp: f32) {
-        if timestamp <= self.current.as_ref().unwrap().end_time {
-            return;
-        }
-        let idx = self.current.as_ref().unwrap().transform_index + 1;
-        for i in idx..self.times.len() {
-            if self.times[idx] > timestamp {
-                self.current = Some(AnimationSample {
-                    end_time: self.times[i],
-                    transform_index: i,
-                });
-                return;
-            }
-        }
-        self.current = None;
-    }
 }
