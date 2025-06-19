@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use cgmath::{Quaternion, SquareMatrix, Vector3, Zero};
 use gltf::{
     accessor::{DataType, Iter},
@@ -125,6 +127,13 @@ pub struct SceneAnimationController {
 }
 
 impl SceneAnimationController {
+    pub fn new() -> Self {
+        Self {
+            active_animations: vec![],
+            active_model_instances: vec![],
+            animations: vec![],
+        }
+    }
     fn animate(&mut self, timestamp: f32) {
         for i in &mut self.active_animations {
             let mut animation_frame = AnimationFrame {

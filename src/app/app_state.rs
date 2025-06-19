@@ -34,7 +34,7 @@ pub enum UpdateResult {
 pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    gscene: GScene,
+    pub gscene: GScene,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
 }
@@ -198,17 +198,12 @@ impl<'a> AppState<'a> {
 
     pub(super) fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.8));
-        let new_t = rot.into();
-        self.gscene.update_global_transform_x(0, new_t);
-        self.app_config.queue.write_buffer(
-            self.gscene
-                .get_global_transform_buffer()
-                .as_ref()
-                .expect("global buffer should be initialized"),
-            0,
-            bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
-        );
+        let time = std::time::SystemTime::now();
+        let timestamp = time
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as f32;
+        self.gscene.animate_frame(timestamp);
         Ok(())
     }
 

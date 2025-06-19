@@ -17,19 +17,13 @@ pub enum AccessorDataType {
 // so that scene can access them, but I may want to work with
 // modesls independently later
 pub struct GModel {
-    pub animation_nodes: Option<Vec<AnimationNode>>,
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
 }
 
 impl GModel {
-    pub(super) fn new(
-        animation_nodes: Option<Vec<AnimationNode>>,
-        meshes: Vec<GMesh>,
-        mesh_instances: Vec<u32>,
-    ) -> Self {
+    pub(super) fn new(meshes: Vec<GMesh>, mesh_instances: Vec<u32>) -> Self {
         Self {
-            animation_nodes,
             meshes,
             mesh_instances,
         }

@@ -206,3 +206,60 @@ first instance of the first model in the scene with the first animation.
 
 InstanceData will be able to take a model number and an instance number, and, using the mesh indices produced by the samplers, 
 change the correct slots in the overall transform buffer
+
+new problem: The way i have structured the data, each sampler is unique to a simgle instance of an animation.
+In order to animate two instances of a model, we would require two distanct animation node trees, each with their own 
+set of animation samplers. With this method, a lot of data would be copied. each nde transform, each set of times and transforms would need to be
+duplicated per INSTANCE.
+
+
+Instead, i think that there should be exaclty one node tree per model. If the scene has one model, there is only ever one node tree,
+because the actual structure of the node and mesh data never changes. The variable elements here are 
+
+1. the samplers. These vary by which model animation is currently active. For one animation, the nodes need to reference some set of samplers, which is different for another animation.
+2. the instance specific data like current time elapsed, and current transform.
+
+ The first point could be taken care of by having each node own a set of Vec<AnimationSampler>.
+ we could query the animation node tree using the index of the desired animation, and the node could use that 
+to select the correct list of samplers it needs to query.
+
+As for the second point, this needs to be owned by the animation controller. We could have a new wrapper class
+AnimationInstance<T: Animation> (although for now ill just have it only operate on SimpleAnimations);
+
+```rust
+struct AnimationInstance {
+    animation_node: Rc<AnimationNode>,
+    time_elapsed: f32,
+    animation_index: usize,
+    sampled_transforms: Vec<[[f32;4];4]>,
+}
+```
+
+where sampled transforms will be a list of exactly the same length as there are animated nodes in the tree.
+
+instead of having the sampler hold onto a transform, its sample() method will deposit its data into the correct
+slot in the Animation instance.
+
+the new process looks something like this:
+1. for each model, build out a node tree.
+2. traverse the node tree. For each animation, check to see if the current node is animated by any of the animations
+3. if so, add the set of samplers to a hashmap<animation index, Vec<AnimationSampler>
+4. traverse through the tree again to fill out the samplers with the proper data from the blob.
+---------------- begin animating model x instance y --------------
+5. AnimationController creates an AnimationInstance 
+```rust
+//initiaLIZE animation?
+pub fn initiate_animation(&self, animation_index: usize, model_index: usize){
+   let animation_instance = AnimationInstance {
+        animation_node: self.animation_nodes[model_index],
+        time_elapsed: 0f32,
+        animation_index,
+        sampled_transforms: node.get_sampled_transforms(),
+    } 
+} 
+```
+6. each frame, we call 
+```rust
+    AnimationInstance.processAnimationFrame(timestame: f32)
+```
+which traverses the animation node, and using self.animation_index, updates self.sampled_transforms.

@@ -75,11 +75,7 @@ pub(super) fn load_models_from_gltf<'a>(
             0 => None,
             _ => Some(animation_nodes),
         };
-        let g_model = GModel::new(
-            maybe_animation_nodes,
-            meshes,
-            model_mesh_data.mesh_instances,
-        );
+        let g_model = GModel::new(meshes, model_mesh_data.mesh_instances);
 
         // add the local transformations to the running vec
         local_transform_data.extend(model_mesh_data.transformation_matrices);

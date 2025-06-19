@@ -1,5 +1,6 @@
 use crate::model::animation::AnimationNode;
 use crate::model::animation::AnimationType;
+use crate::model::animation::SceneAnimationController;
 use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
@@ -16,9 +17,13 @@ pub struct GScene {
     index_data: IndexData,
     pub(super) instance_data: InstanceData,
     camera: Option<Camera>,
+    animation_controller: SceneAnimationController,
 }
 
 impl GScene {
+    pub fn animate_frame(&mut self, timestamp: f32) {
+        todo!()
+    }
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);
         self.index_data.init(device);
