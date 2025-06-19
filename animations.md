@@ -193,15 +193,16 @@ and for m1
 
 we can maybe do everything in one pass, if we store the root node for a model in SimpleAnimation
 
-```rust
-impl SimpleAnimation {
-    fn get_transforms(&self, timestamp: f32, base_translatrion: LocalTransform ,&mut Vec<LocalTransform>)  {
-         
-        
 
-    }
-}
-```
+now that we have a method of obtaining the correct transform for the meshes of a model each frame,
+we need to implement some logic for the animation controller. We need
+
+1. a way to indicate to the controller that a certain animation is active on a certain instance of a model
+2. a way to take a vec of transforms, and slot them into the local transform buffer at the right locations
 
 
+as for the issue, we can keep it simple for now. If the '1' key is pressed, that can indicate that we want to animate the 
+first instance of the first model in the scene with the first animation. 
 
+InstanceData will be able to take a model number and an instance number, and, using the mesh indices produced by the samplers, 
+change the correct slots in the overall transform buffer

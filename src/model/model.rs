@@ -1,7 +1,7 @@
 use super::util::GltfErrors;
 use crate::model::animation::AnimationNode;
+use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
-use crate::model::{animation::Animation, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
 use std::ops::{self, Range};

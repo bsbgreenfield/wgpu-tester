@@ -1,39 +1,9 @@
-use std::{ops::Range, rc::Rc, thread::current};
-
+use cgmath::{Quaternion, SquareMatrix, Vector3, Zero};
 use gltf::{
     accessor::{DataType, Iter},
     animation::Channel,
     Node,
 };
-
-use crate::{model::model::LocalTransform, transforms};
-
-pub struct Animation {
-    pub animation_components: Vec<AnimationComponent>,
-}
-
-pub struct AnimationComponent {
-    mesh_ids: Vec<usize>,
-    times_data: (usize, usize),
-    transforms_data: (usize, usize),
-    interpolation: Interpolation,
-}
-
-impl AnimationComponent {
-    pub fn new_uninit(
-        mesh_ids: Vec<usize>,
-        times_data: (usize, usize),
-        transforms_data: (usize, usize),
-        interpolation: Interpolation,
-    ) -> Self {
-        Self {
-            mesh_ids,
-            times_data,
-            transforms_data,
-            interpolation,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum Interpolation {
@@ -54,26 +24,71 @@ pub enum NodeType {
 }
 pub struct AnimationNode {
     pub children: Vec<AnimationNode>,
-    transform: [[f32; 4]; 4],
+    transform: cgmath::Matrix4<f32>,
     pub samplers: Option<Vec<AnimationSampler>>,
     node_type: NodeType,
     node_id: usize,
     mesh_id: Option<usize>,
 }
 impl AnimationNode {
+    /// given the current Animation Sample,
+    /// get the interpolated transform that should
+    /// be applied to the meshes
+    fn interpolate(&mut self, timestamp: f32) -> cgmath::Matrix4<f32> {
+        let mut rotation: Option<cgmath::Quaternion<f32>> = None;
+        let mut translation: Option<cgmath::Vector3<f32>> = None;
+        let mut scale: Option<cgmath::Matrix4<f32>> = None;
+        if let Some(samplers) = &mut self.samplers {
+            for sampler in samplers.iter() {
+                if let Some(current_sample) = &sampler.current {
+                    let first_transform = sampler.transforms[current_sample.transform_index];
+                    let second_transform = sampler.transforms[current_sample.transform_index + 1];
+                    let amount: f32 = (timestamp - sampler.times[current_sample.transform_index])
+                        / (sampler.times[current_sample.transform_index + 1]
+                            - sampler.times[current_sample.transform_index])
+                        - sampler.times[current_sample.transform_index];
+                    match sampler.animation_type {
+                        AnimationType::Rotation => {
+                            let q1 = cgmath::Quaternion::from(first_transform);
+                            let q2 = cgmath::Quaternion::from(second_transform);
+                            rotation = Some(q1.nlerp(q2, amount));
+                        }
+                        AnimationType::Translation => {
+                            let t_diff = cgmath::Vector3::<f32>::from([
+                                second_transform[0] - first_transform[0],
+                                second_transform[1] - first_transform[1],
+                                second_transform[2] - first_transform[2],
+                            ]);
+                            let t_interp = t_diff * amount;
+                            translation = Some(cgmath::Vector3::from([
+                                first_transform[0] + t_interp[0],
+                                first_transform[1] + t_interp[1],
+                                first_transform[2] + t_interp[2],
+                            ]));
+                        }
+                        _ => todo!("implement scaling!!!"),
+                    };
+                }
+            }
+        }
+        self.transform = self.transform
+            * cgmath::Matrix4::from(rotation.unwrap_or(Quaternion::zero()))
+            * cgmath::Matrix4::from_translation(translation.unwrap_or(Vector3::zero()));
+        self.transform
+    }
     pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
         match node.mesh() {
             Some(mesh) => AnimationNode {
                 children,
-                transform: node.transform().matrix(),
+                transform: cgmath::Matrix4::from(node.transform().matrix()),
                 samplers: None,
                 node_type: NodeType::Mesh,
                 node_id: node.index(),
-                mesh_id: Some(node.mesh().unwrap().index()),
+                mesh_id: Some(mesh.index()),
             },
             None => AnimationNode {
                 children,
-                transform: node.transform().matrix(),
+                transform: cgmath::Matrix4::from(node.transform().matrix()),
                 samplers: None,
                 node_type: NodeType::Node,
                 node_id: node.index(),
@@ -93,6 +108,11 @@ impl AnimationNode {
     }
 }
 
+pub struct AnimationFrame {
+    model_id: usize,
+    transforms: Vec<(usize, [[f32; 4]; 4])>,
+}
+
 /// Keeps track of which animations are currently playing.
 /// The controllers functions are
 /// 1. adding or removing active animation indices based on user input and time
@@ -100,34 +120,47 @@ impl AnimationNode {
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
     active_animations: Vec<usize>,
+    active_model_instances: Vec<usize>,
     animations: Vec<SimpleAnimation>,
 }
 
-struct SimpleAnimation {
-    root_node: AnimationTransformNode,
+impl SceneAnimationController {
+    fn animate(&mut self, timestamp: f32) {
+        for i in &mut self.active_animations {
+            let mut animation_frame = AnimationFrame {
+                model_id: self.active_model_instances[*i],
+                transforms: Vec::new(),
+            };
+            get_animation_frame(
+                &mut self.animations[*i].root_node,
+                timestamp,
+                &mut animation_frame,
+            );
+        }
+    }
 }
 
-struct AnimationTransformNode {
-    node_id: usize,
-    transform: [[f32; 4]; 4],
-    sampler: Option<AnimationSampler>,
-}
-impl SimpleAnimation {
-    fn get_transforms(
-        node: &AnimationTransformNode,
-        timestamp: f32,
-        mut base_translation: cgmath::Matrix4<f32>,
-        local_transforms: &mut Vec<[[f32; 4]; 4]>,
-    ) {
-        match &node.sampler {
-            Some(sampler) => todo!(),
-            None => {
-                base_translation = base_translation * cgmath::Matrix4::<f32>::from(node.transform);
+fn get_animation_frame(
+    animation_node: &mut AnimationNode,
+    timestamp: f32,
+    animation_frame: &mut AnimationFrame,
+) {
+    match animation_node.node_type {
+        NodeType::Mesh => animation_frame.transforms.push((
+            animation_node.mesh_id.unwrap(),
+            animation_node.transform.into(),
+        )),
+        NodeType::Node => {
+            for child in animation_node.children.iter_mut() {
+                get_animation_frame(child, timestamp, animation_frame);
             }
         }
     }
 }
 
+struct SimpleAnimation {
+    root_node: AnimationNode,
+}
 #[derive(Debug)]
 pub enum AnimationType {
     Rotation,
@@ -237,12 +270,5 @@ impl AnimationSampler {
             }
         }
         self.current = None;
-    }
-
-    /// given the current Animation Sample,
-    /// get the interpolated transform that should
-    /// be applied to the meshes
-    fn interpolate() -> LocalTransform {
-        todo!()
     }
 }

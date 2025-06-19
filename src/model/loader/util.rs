@@ -8,10 +8,7 @@ use cgmath::SquareMatrix;
 use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
 
 use crate::model::{
-    animation::{
-        attach_samplers, Animation, AnimationComponent, AnimationNode, AnimationSampler,
-        Interpolation,
-    },
+    animation::{attach_samplers, AnimationNode},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
