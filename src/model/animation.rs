@@ -1,6 +1,10 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    rc::Rc,
+    time::{Duration, UNIX_EPOCH},
+};
 
-use cgmath::{Quaternion, SquareMatrix, Vector3, Zero};
+use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Vector4, Zero};
 use gltf::{
     accessor::{DataType, Iter},
     animation::Channel,
@@ -13,6 +17,15 @@ pub enum AnimationType {
     Scale,
     // others?
 }
+
+const NO_TRANSLATION: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);
+const NO_ROTATION: Quaternion<f32> = Quaternion::new(1.0, 0.0, 0.0, 0.0); // w = 1
+const IDENTITY: Matrix4<f32> = Matrix4::<f32>::from_cols(
+    Vector4::new(1.0, 0.0, 0.0, 0.0),
+    Vector4::new(0.0, 1.0, 0.0, 0.0),
+    Vector4::new(0.0, 0.0, 1.0, 0.0),
+    Vector4::new(0.0, 0.0, 0.0, 1.0),
+);
 
 impl AnimationType {
     fn from(property: &gltf::animation::Property) -> Self {
@@ -37,7 +50,7 @@ impl From<gltf::animation::Interpolation> for Interpolation {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum NodeType {
     Node,
     Mesh,
@@ -79,7 +92,10 @@ impl AnimationNode {
             }
         }
     }
-
+    // the only reason we can get away with not indexing the meshes
+    // here is by relying on the fact that the node tree will traverse the same
+    // every time
+    /// build out a new set of mesh transforms for this instance.
     fn update_mesh_transforms(
         &self,
         new_transforms: &mut Vec<[[f32; 4]; 4]>,
@@ -87,7 +103,7 @@ impl AnimationNode {
     ) {
         let mut rotation: Option<cgmath::Quaternion<f32>> = None;
         let mut translation: Option<cgmath::Vector3<f32>> = None;
-        let mut scale: Option<cgmath::Matrix4<f32>> = None;
+        let mut scale: Option<cgmath::Vector3<f32>> = None;
         if let Some(sample_map) = &self.samplers {
             if let Some(sample_set) = sample_map.get(&instance.animation_index) {
                 for sampler in sample_set {
@@ -100,55 +116,47 @@ impl AnimationNode {
                             / (sampler.times[current_sample.transform_index + 1]
                                 - sampler.times[current_sample.transform_index])
                             - sampler.times[current_sample.transform_index];
+                        match sampler.animation_type {
+                            AnimationType::Rotation => {
+                                let q1 = cgmath::Quaternion::from(first_transform);
+                                let q2 = cgmath::Quaternion::from(second_transform);
+                                rotation = Some(q1.nlerp(q2, amount));
+                            }
+                            AnimationType::Translation => {
+                                let t_diff = cgmath::Vector3::<f32>::from([
+                                    second_transform[0] - first_transform[0],
+                                    second_transform[1] - first_transform[1],
+                                    second_transform[2] - first_transform[2],
+                                ]);
+                                let t_interp = t_diff * amount;
+                                translation = Some(cgmath::Vector3::from([
+                                    first_transform[0] + t_interp[0],
+                                    first_transform[1] + t_interp[1],
+                                    first_transform[2] + t_interp[2],
+                                ]));
+                            }
+                            _ => todo!("implement scaling!!!"),
+                        };
                     }
                 }
             }
-        }
-    }
-    /// given the current Animation Sample,
-    /// get the interpolated transform that should
-    /// be applied to the meshes
-    fn interpolate(&mut self, timestamp: f32) -> cgmath::Matrix4<f32> {
-        let mut rotation: Option<cgmath::Quaternion<f32>> = None;
-        let mut translation: Option<cgmath::Vector3<f32>> = None;
-        let mut scale: Option<cgmath::Matrix4<f32>> = None;
-        if let Some(samplers) = &mut self.samplers {
-            for sampler in samplers.iter() {
-                if let Some(current_sample) = &sampler.current {
-                    let first_transform = sampler.transforms[current_sample.transform_index];
-                    let second_transform = sampler.transforms[current_sample.transform_index + 1];
-                    let amount: f32 = (timestamp - sampler.times[current_sample.transform_index])
-                        / (sampler.times[current_sample.transform_index + 1]
-                            - sampler.times[current_sample.transform_index])
-                        - sampler.times[current_sample.transform_index];
-                    match sampler.animation_type {
-                        AnimationType::Rotation => {
-                            let q1 = cgmath::Quaternion::from(first_transform);
-                            let q2 = cgmath::Quaternion::from(second_transform);
-                            rotation = Some(q1.nlerp(q2, amount));
-                        }
-                        AnimationType::Translation => {
-                            let t_diff = cgmath::Vector3::<f32>::from([
-                                second_transform[0] - first_transform[0],
-                                second_transform[1] - first_transform[1],
-                                second_transform[2] - first_transform[2],
-                            ]);
-                            let t_interp = t_diff * amount;
-                            translation = Some(cgmath::Vector3::from([
-                                first_transform[0] + t_interp[0],
-                                first_transform[1] + t_interp[1],
-                                first_transform[2] + t_interp[2],
-                            ]));
-                        }
-                        _ => todo!("implement scaling!!!"),
+
+            let transform =
+                cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
+                    * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
+                    * match scale {
+                        Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
+                        None => IDENTITY,
                     };
-                }
+            // if this is a regular node, pass this transform along as the base translation.
+            // if this is a mesh, add it to the list and do the same
+            if self.node_type == NodeType::Mesh {
+                new_transforms.push(transform.into());
+            }
+            for child_node in self.children.iter() {
+                child_node.update_mesh_transforms(new_transforms, instance);
             }
         }
-        self.transform = self.transform
-            * cgmath::Matrix4::from(rotation.unwrap_or(Quaternion::zero()))
-            * cgmath::Matrix4::from_translation(translation.unwrap_or(Vector3::zero()));
-        self.transform
     }
     pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
         match node.mesh() {
@@ -190,19 +198,22 @@ pub struct AnimationFrame {
 struct AnimationInstance {
     /// the node tree for the model
     animation_node: Rc<AnimationNode>,
-    time_elapsed: f32,
+    start_time: u64,
+    time_elapsed: Duration,
     /// global index of the animation as defined in the gltf file
     animation_index: usize,
     /// the set of transforms affected by the samplers
     /// of this instances node tree
     mesh_transforms: Vec<[[f32; 4]; 4]>,
     ///
-    current: Option<AnimationSample>,
+    current_samples: HashMap<usize, AnimationSample>,
 }
 
 impl AnimationInstance {
-    fn process_animation_frame(&mut self, timestamp: f32) {
-        todo!()
+    fn process_animation_frame(&mut self, timestamp: u64) {
+        self.time_elapsed = Duration::from_millis(timestamp - self.start_time);
+        let mut mts = Vec::with_capacity(self.mesh_transforms.len());
+        self.animation_node.update_mesh_transforms(&mut mts, &self);
     }
 }
 
@@ -230,18 +241,24 @@ impl SceneAnimationController {
         // clone a shared reference to the animation node tree
         let animation_node = self.animations[animation_index].animation_node.clone();
         // get copies of the initial state of the animated nodes
-        let mut sampled_transforms: Vec<[[f32; 4]; 4]> = Vec::new();
-        &animation_node.initialize_sampled_transforms(&mut sampled_transforms);
+        let mut mesh_transforms: Vec<[[f32; 4]; 4]> = Vec::new();
+        &animation_node.initialize_sampled_transforms(&mut mesh_transforms);
+        let start_time = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_millis() as u64;
         let animation_instance = AnimationInstance {
             animation_node,
-            time_elapsed: 0f32,
+            start_time,
+            time_elapsed: Duration::ZERO,
             animation_index,
-            sampled_transforms,
+            mesh_transforms,
+            current_samples: animation_node.get_default_samples(),
         };
         self.active_animations.push(animation_instance);
     }
 
-    pub fn do_animations(&mut self, timestamp: f32) {
+    pub fn do_animations(&mut self, timestamp: u64) {
         for animation_instance in self.active_animations.iter_mut() {
             animation_instance.process_animation_frame(timestamp);
         }
@@ -317,14 +334,14 @@ impl AnimationSampler {
         }
     }
 
-    fn sample(&mut self, timestamp: f32) {
-        if timestamp <= self.current.as_ref().unwrap().end_time {
+    fn sample(&self, current: &Option<AnimationSample>, timestamp: f32) {
+        if timestamp <= current.as_ref().unwrap().end_time {
             return;
         }
-        let idx = self.current.as_ref().unwrap().transform_index + 1;
+        let idx = current.as_ref().unwrap().transform_index + 1;
         for i in idx..self.times.len() {
             if self.times[idx] > timestamp {
-                self.current = Some(AnimationSample {
+                current = Some(AnimationSample {
                     end_time: self.times[i],
                     transform_index: i,
                 });
