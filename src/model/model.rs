@@ -1,5 +1,4 @@
 use super::util::GltfErrors;
-use crate::model::animation::AnimationNode;
 use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
 use crate::scene::scene::GScene;

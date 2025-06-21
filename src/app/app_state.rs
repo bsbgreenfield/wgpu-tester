@@ -203,7 +203,6 @@ impl<'a> AppState<'a> {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as f32;
-        self.gscene.animate_frame(timestamp);
         Ok(())
     }
 

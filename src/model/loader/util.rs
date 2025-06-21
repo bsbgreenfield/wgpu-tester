@@ -1,14 +1,13 @@
 use std::{
     fs::{self, ReadDir},
     path::PathBuf,
-    rc::Rc,
 };
 
 use cgmath::SquareMatrix;
-use gltf::{accessor::DataType, animation::Channel, Gltf, Node};
+use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
-    animation::{attach_sampler_sets, AnimationNode, SimpleAnimation},
+    animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
@@ -60,12 +59,14 @@ pub(super) fn load_models_from_gltf<'a>(
         let root_node: &gltf::Node<'a> = &nodes[*rid];
 
         // get a animation node trees
-        let animation_node: AnimationNode = load_animations(&root_node, animations);
+        let maybe_animation_node: Option<AnimationNode> = load_animations(&root_node, animations);
 
         // create a new SimpleAnimation
         // models are indexed by the order in which they are aded to the scenes
         // [models] field.
-        simple_animations.push(SimpleAnimation::new(animation_node, models.len()));
+        if let Some(animation_node) = maybe_animation_node {
+            simple_animations.push(SimpleAnimation::new(animation_node, models.len()));
+        }
 
         // mesh data
         model_mesh_data = find_model_meshes(
@@ -90,13 +91,25 @@ pub(super) fn load_models_from_gltf<'a>(
 // for each distinct animation on a single model
 // create an [AniamtionNode] tree, and populate each node with 0 or more
 // sets of samplers that appy to the that node
-fn load_animations(root_node: &gltf::Node, animations: &gltf::iter::Animations) -> AnimationNode {
+fn load_animations(
+    root_node: &gltf::Node,
+    animations: &gltf::iter::Animations,
+) -> Option<AnimationNode> {
     let mut animation_node = build_animation_node_tree(root_node);
+    let mut is_animated = false;
     for animation in animations.clone().into_iter() {
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
-        attach_sampler_sets(&mut animation_node, &channels);
+        animation_node.attach_sampler_sets(&channels, &mut is_animated);
     }
-    return animation_node;
+    // the model represented by the root node is considered animated if,
+    // for any of the gltf animations, at least one of the nodes in its tree
+    // has an associated channel
+    // if not animated, the AnimationNode can be discarded
+    if is_animated {
+        return Some(animation_node);
+    } else {
+        return None;
+    }
 }
 
 /// recurse through the root node to get data on transformations, mesh indices, and mesh

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::model::{
-    animation::SimpleAnimation,
+    animation::animation_controller::SimpleAnimation,
     loader::util::{get_data_files, get_root_nodes, load_models_from_gltf},
     model::{GModel, LocalTransform},
 };
