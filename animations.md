@@ -165,8 +165,8 @@ So AnimationSampler needs to also store a current field which is something like
 
 ```rust
 struct AnimationSample {
-    end_time: f32, // the last time at which this sample is valid
-    transform_index: usize, // why store a tuple or something if we are already storing the transforms in the parent vec
+    pub(super) end_time: f32, // the last time at which this sample is valid
+    pub(super) transform_index: usize, // why store a tuple or something if we are already storing the transforms in the parent vec
 }
 ```
 

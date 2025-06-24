@@ -4,7 +4,7 @@ use std::{
 };
 
 use cgmath::SquareMatrix;
-use gltf::{animation::Channel, Gltf};
+use gltf::{animation::Channel, json::extensions::mesh, Gltf};
 
 use crate::model::{
     animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
@@ -59,8 +59,7 @@ pub(super) fn load_models_from_gltf<'a>(
         let root_node: &gltf::Node<'a> = &nodes[*rid];
 
         // get a animation node trees
-        let maybe_animation_node: Option<AnimationNode> = load_animations(&root_node, animations);
-
+        let maybe_animation_node = load_animations(&root_node, animations);
         // create a new SimpleAnimation
         // models are indexed by the order in which they are aded to the scenes
         // [models] field.

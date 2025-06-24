@@ -1,6 +1,8 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, ops::Deref, time::Duration};
 
+use cgmath::Vector3;
 use gltf::{animation::Channel, Node};
+use winit::raw_window_handle_05::Active;
 
 use crate::model::animation::{
     animation_controller::AnimationInstance,
@@ -17,7 +19,6 @@ pub struct AnimationNode {
     pub samplers: Option<ModelAnimationMap>,
     node_type: NodeType,
     pub(super) node_id: usize,
-    mesh_id: Option<usize>,
 }
 impl AnimationNode {
     pub(super) fn get_default_samples(
@@ -28,13 +29,11 @@ impl AnimationNode {
         if let Some(sampler_map) = &self.samplers {
             if let Some(samplers) = sampler_map.get(&animation_index) {
                 for sampler in samplers {
-                    map.insert(
-                        sampler.id,
-                        Some(AnimationSample {
-                            end_time: 0.0,
-                            transform_index: 0,
-                        }),
-                    );
+                    let default = AnimationSample {
+                        end_time: sampler.times[0],
+                        transform_index: -1,
+                    };
+                    map.insert(sampler.id, Some(default));
                 }
             }
         }
@@ -87,85 +86,122 @@ impl AnimationNode {
             }
         }
     }
-    // the only reason we can get away with not indexing the meshes
-    // here is by relying on the fact that the node tree will traverse the same
-    // every time
-    /// build out a new set of mesh transforms for this instance.
     pub(super) fn update_mesh_transforms(
         &self,
-        new_transforms: &mut Vec<[[f32; 4]; 4]>,
         instance: &mut AnimationInstance,
+        base_translation: cgmath::Matrix4<f32>,
+        current_mesh_id: &mut usize,
     ) {
         let mut rotation: Option<cgmath::Quaternion<f32>> = None;
         let mut translation: Option<cgmath::Vector3<f32>> = None;
         let mut scale: Option<cgmath::Vector3<f32>> = None;
         if let Some(sample_map) = &self.samplers {
-            if let Some(sample_set) = sample_map.get(&instance.animation_index) {
-                // for each sampler in the nodes samplers for this animation,
-                // get the new Option<sample> and if some, use that value to
-                // calculate a new transform
-                for sampler in sample_set {
-                    // get the Option<AnimationSample> for this sampler/intance
-                    let maybe_current_sample = sampler.sample(
-                        *instance.current_samples.get(&sampler.id).unwrap(),
-                        instance.time_elapsed,
+            if let Some(sampler_set) = sample_map.get(&instance.animation_index) {
+                for sampler in sampler_set {
+                    println!(
+                        "times: {:?} tranformations: {:?}",
+                        sampler.times, sampler.transforms
                     );
-                    // if the sample is active, interpolate the new transform by populating
-                    // Transform, Rotatiom, or Scale for this node
-                    if let Some(current_sample) = maybe_current_sample {
-                        let i = current_sample.transform_index;
-                        let first_transform = sampler.transforms[current_sample.transform_index];
-                        let second_transform =
-                            sampler.transforms[current_sample.transform_index + 1];
-                        let amount: f32 = (instance.time_elapsed.as_secs_f32() - sampler.times[i])
-                            / (sampler.times[i + 1] - sampler.times[i])
-                            - sampler.times[i];
-                        match sampler.animation_type {
-                            AnimationType::Rotation => {
-                                let q1 = cgmath::Quaternion::from(first_transform);
-                                let q2 = cgmath::Quaternion::from(second_transform);
-                                rotation = Some(q1.nlerp(q2, amount));
-                            }
-                            AnimationType::Translation => {
-                                let t_diff = cgmath::Vector3::<f32>::from([
-                                    second_transform[0] - first_transform[0],
-                                    second_transform[1] - first_transform[1],
-                                    second_transform[2] - first_transform[2],
-                                ]);
-                                let t_interp = t_diff * amount;
-                                translation = Some(cgmath::Vector3::from([
-                                    first_transform[0] + t_interp[0],
-                                    first_transform[1] + t_interp[1],
-                                    first_transform[2] + t_interp[2],
-                                ]));
-                            }
-                            _ => todo!("implement scaling!!!"),
-                        };
+                    let corresponding_sample = instance.current_samples.get(&sampler.id).unwrap();
+                    // if the sampler is finished, skip it.
+                    if corresponding_sample.is_none() {
+                        continue;
                     }
-                    *instance.current_samples.get_mut(&sampler.id).unwrap() = maybe_current_sample;
+                    // otherwise, get the new sample, which may be Active or Done
+                    let maybe_current_sample =
+                        sampler.sample((*corresponding_sample).unwrap(), instance.time_elapsed);
+                    // if it is Active, do the transforms, unless it hasnt started yet (idx is -1)
+                    // if its Done apply the final transform and set the sample to None in the
+                    // instace map
+
+                    match maybe_current_sample {
+                        SampleResult::Active(current_sample) => {
+                            if current_sample.transform_index == -1 {
+                                continue;
+                            }
+                            let i = current_sample.transform_index as usize;
+                            let first_transform = sampler.transforms[i];
+                            let second_transform = sampler.transforms[i + 1];
+                            let amount: f32 = (instance.time_elapsed.as_secs_f32()
+                                - sampler.times[i])
+                                / (sampler.times[i + 1] - sampler.times[i])
+                                - sampler.times[i];
+                            match sampler.animation_type {
+                                AnimationType::Rotation => {
+                                    let q1 = cgmath::Quaternion::from(first_transform);
+                                    let q2 = cgmath::Quaternion::from(second_transform);
+                                    rotation = Some(q1.nlerp(q2, amount));
+                                }
+                                AnimationType::Translation => {
+                                    let t_diff = cgmath::Vector3::<f32>::from([
+                                        second_transform[0] - first_transform[0],
+                                        second_transform[1] - first_transform[1],
+                                        second_transform[2] - first_transform[2],
+                                    ]);
+                                    let t_interp = t_diff * amount;
+                                    translation = Some(cgmath::Vector3::from([
+                                        first_transform[0] + t_interp[0],
+                                        first_transform[1] + t_interp[1],
+                                        first_transform[2] + t_interp[2],
+                                    ]));
+                                }
+                                _ => todo!("implement scaling!!!"),
+                            };
+                            *instance.current_samples.get_mut(&sampler.id).unwrap() =
+                                Some(current_sample);
+                        }
+                        SampleResult::Done(finished_sample) => {
+                            let i = finished_sample.transform_index as usize;
+                            let transform = sampler.transforms[i];
+                            match sampler.animation_type {
+                                AnimationType::Rotation => {
+                                    let q1 = cgmath::Quaternion::from(transform);
+                                    rotation = Some(q1);
+                                }
+                                AnimationType::Translation => {
+                                    translation = Some(Vector3::new(
+                                        transform[0],
+                                        transform[1],
+                                        transform[2],
+                                    ));
+                                }
+                                _ => todo!("implement scaling!!!"),
+                            };
+                            let mut is_done = true;
+                            // this sample just turned into a None value,
+                            // this is a good time to check if the whole animation is done
+                            for a in instance.current_samples.values() {
+                                if a.is_some() {
+                                    is_done = false;
+                                }
+                            }
+                            instance.is_done = is_done;
+                            *instance.current_samples.get_mut(&sampler.id).unwrap() = None;
+                        }
+                    }
                 }
             }
-            // after looping over all the active samplers for this node
-            // and assigning the new Option<AnimationSample> to the intance sample map,
-            // compose a transform matrix from the TRS components
+        } // apply the new transform to the base translation using the optional TRS components
+        let transform = base_translation
+            * cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
+            * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
+            * match scale {
+                Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
+                None => IDENTITY,
+            };
 
-            let transform =
-                cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
-                    * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
-                    * match scale {
-                        Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
-                        None => IDENTITY,
-                    };
-            // if this is a regular node, pass this transform along as the base translation.
-            // if this is a mesh, add it to the list and do the same
-            if self.node_type == NodeType::Mesh {
-                new_transforms.push(transform.into());
-            }
-            for child_node in self.children.iter() {
-                child_node.update_mesh_transforms(new_transforms, instance);
-            }
+        println!("calculated transform: {:?}", transform);
+        // assign the mesh transform to the proper slot for this instance
+        //
+        if self.node_type == NodeType::Mesh {
+            instance.mesh_transforms[*current_mesh_id] = transform.into();
+            *current_mesh_id += 1;
+        }
+        for child_node in &self.children {
+            child_node.update_mesh_transforms(instance, transform, current_mesh_id);
         }
     }
+
     pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
         match node.mesh() {
             Some(mesh) => AnimationNode {
@@ -174,7 +210,6 @@ impl AnimationNode {
                 samplers: None,
                 node_type: NodeType::Mesh,
                 node_id: node.index(),
-                mesh_id: Some(mesh.index()),
             },
             None => AnimationNode {
                 children,
@@ -182,7 +217,6 @@ impl AnimationNode {
                 samplers: None,
                 node_type: NodeType::Node,
                 node_id: node.index(),
-                mesh_id: None,
             },
         }
     }
@@ -198,11 +232,26 @@ impl AnimationNode {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum SampleResult {
+    Active(AnimationSample),
+    Done(AnimationSample),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AnimationSample {
-    end_time: f32,
-    transform_index: usize,
+    pub(super) end_time: f32,
+    pub(super) transform_index: i32,
 }
+impl SampleResult {
+    fn unwrap(self) -> AnimationSample {
+        match self {
+            Self::Active(a) => a,
+            Self::Done(a) => a,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AnimationSampler {
     id: usize,
@@ -237,32 +286,31 @@ impl AnimationSampler {
         }
     }
 
-    /// sample this sampler using the last frames sample as a baseline.
-    /// if None, this sampler is done, so we can skip it.
-    /// if the threshold time for the last sample hasn't been surpassed, return the same sample
-    /// if the threshold time has been surpassed, either return the index or None
-    fn sample(
-        &self,
-        current: Option<AnimationSample>,
-        time_elapsed: Duration,
-    ) -> Option<AnimationSample> {
-        match current {
-            None => None,
-            Some(current_sample) => {
-                if time_elapsed.as_secs_f32() > current_sample.end_time {
-                    let idx = current_sample.transform_index + 1;
-                    for i in idx..self.times.len() {
-                        if self.times[idx] > time_elapsed.as_secs_f32() {
-                            return Some(AnimationSample {
-                                end_time: self.times[i],
-                                transform_index: i,
-                            });
-                        }
-                    }
-                    return None;
+    fn sample(&self, current_sample: AnimationSample, time_elapsed: Duration) -> SampleResult {
+        // if the current time elapsed has surpassed the threshold time for this sample
+        // we need to calculate a new sample
+        if time_elapsed.as_secs_f32() >= current_sample.end_time {
+            let idx = (current_sample.transform_index + 1) as usize;
+            // loop through the times after the current time
+            // skipping the first time, as that is already the end time
+            // if we hit a time that is greater than the time elapsed, at times[i]
+            // we know that times[i] is our new end time, and i - 1 is our new t index
+            // if we reach the end of the times, this sampler is done, return None
+            for i in (idx..self.times.len()).skip(1) {
+                if time_elapsed.as_secs_f32() > self.times[i] {
+                    continue;
+                } else {
+                    return SampleResult::Active(AnimationSample {
+                        end_time: self.times[i],
+                        transform_index: (i as i32 - 1),
+                    });
                 }
-                return current;
             }
+            return SampleResult::Done(AnimationSample {
+                end_time: self.times[self.times.len() - 1],
+                transform_index: self.times.len() as i32 - 1,
+            });
         }
+        return SampleResult::Active(current_sample);
     }
 }

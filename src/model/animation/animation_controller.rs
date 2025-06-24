@@ -4,6 +4,8 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
+use cgmath::SquareMatrix;
+
 use crate::model::animation::{
     animation_node::{self, AnimationNode, AnimationSample},
     util::copy_data_for_animation,
@@ -47,7 +49,7 @@ impl SceneAnimationController {
         }
     }
 
-    pub fn initiate_animation(&mut self, animation_index: usize) {
+    pub fn initiate_animation(&mut self, animation_index: usize, instance_index: usize) {
         // clone a shared reference to the animation node tree
         let animation_node = self.animations[animation_index].animation_node.clone();
         // get copies of the initial state of the animated nodes
@@ -57,49 +59,67 @@ impl SceneAnimationController {
         let _ = &animation_node.initialize_sampled_transforms(&mut mesh_transforms);
         let start_time = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+            .unwrap();
         let animation_instance = AnimationInstance {
+            instance_index,
             animation_node,
             start_time,
             time_elapsed: Duration::ZERO,
             animation_index,
             mesh_transforms,
             current_samples: sample_map,
+            is_done: false,
         };
         self.active_animations.push(animation_instance);
     }
 
-    pub fn do_animations(&mut self, timestamp: u64) {
+    pub fn do_animations(&mut self, timestamp: Duration) -> AnimationFrame {
+        let mut animation_frame: AnimationFrame = AnimationFrame {
+            instances: Vec::with_capacity(self.active_animations.len()),
+            transform_slices: Vec::with_capacity(self.active_animations.len()),
+        };
         for animation_instance in self.active_animations.iter_mut() {
-            animation_instance.process_animation_frame(timestamp);
+            let idx = animation_instance.instance_index.clone();
+            let instance_transforms = animation_instance.process_animation_frame(timestamp);
+            animation_frame.transform_slices.push(instance_transforms);
+            animation_frame.instances.push(idx);
         }
+        animation_frame
     }
+}
+
+pub struct AnimationFrame<'a> {
+    instances: Vec<usize>,
+    transform_slices: Vec<&'a [[[f32; 4]; 4]]>,
 }
 
 pub(super) struct AnimationInstance {
     /// the node tree for the model
     animation_node: Rc<AnimationNode>,
-    start_time: u64,
+    pub(super) instance_index: usize,
+    pub(super) start_time: Duration,
     pub(super) time_elapsed: Duration,
     /// global index of the animation as defined in the gltf file
     pub(super) animation_index: usize,
     /// the set of transforms affected by the samplers
     /// of this instances node tree
-    mesh_transforms: Vec<[[f32; 4]; 4]>,
+    pub(super) mesh_transforms: Vec<[[f32; 4]; 4]>,
     /// a map of sampler id -> sample
     /// used to keep track of the last frames data
     pub(super) current_samples: HashMap<usize, Option<AnimationSample>>,
+    pub(super) is_done: bool,
 }
 
 impl AnimationInstance {
-    fn process_animation_frame(&mut self, timestamp: u64) {
-        self.time_elapsed = Duration::from_millis(timestamp - self.start_time);
-        let mut mts = Vec::with_capacity(self.mesh_transforms.len());
+    /// given the current timestamp, mutate this instance's mesh transforms,
+    /// and return it as a slice
+    fn process_animation_frame(&mut self, timestamp: Duration) -> &[[[f32; 4]; 4]] {
+        self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
         // i dont think its a big problem, but its annoying.
         let node = self.animation_node.clone();
-        node.update_mesh_transforms(&mut mts, self);
+        node.update_mesh_transforms(self, cgmath::Matrix4::<f32>::identity(), &mut 0);
+        return &self.mesh_transforms[..];
     }
 }
 

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::model::animation::animation_controller::get_scene_animation_data;
 use crate::model::animation::animation_controller::SceneAnimationController;
 use crate::model::animation::animation_controller::SimpleAnimation;
@@ -21,8 +23,8 @@ pub struct GScene {
 }
 
 impl GScene {
-    pub fn animate_frame(&mut self, timestamp: f32) {
-        todo!()
+    pub fn animate_frame(&mut self, timestamp: Duration) {
+        self.animation_controller.do_animations(timestamp);
     }
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);

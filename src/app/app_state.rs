@@ -199,10 +199,8 @@ impl<'a> AppState<'a> {
     pub(super) fn update(&mut self) -> Result<(), UpdateResult> {
         self.process_input();
         let time = std::time::SystemTime::now();
-        let timestamp = time
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as f32;
+        let timestamp = time.duration_since(std::time::UNIX_EPOCH).unwrap();
+        self.gscene.animate_frame(timestamp);
         Ok(())
     }
 

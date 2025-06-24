@@ -7,7 +7,6 @@ use crate::model::{
     model::{GlobalTransform, LocalTransform},
     util::InitializationError,
 };
-#[allow(dead_code)]
 
 pub(super) struct InstanceData {
     pub model_instances: Vec<usize>,
@@ -18,14 +17,11 @@ pub(super) struct InstanceData {
     /// These are the offsets which correspond to the slot
     /// of the first local transform for this model.
     /// All local transforms which refer to a model would be located in the range from
-    /// ```rust
     /// [instance_local_offsets[model_idx] .. (instance_local_offsets[model_idx] +
     /// model.mesh_instance_count * model_instances[model_idx])]
-    /// ```
     instance_local_offsets: Vec<usize>,
 }
 
-#[allow(dead_code)]
 impl InstanceData {
     /// create Instance data with one instance of each model, each positioned at the origin
     pub fn default_from_scene(
