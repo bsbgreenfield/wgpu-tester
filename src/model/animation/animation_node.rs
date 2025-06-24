@@ -98,10 +98,6 @@ impl AnimationNode {
         if let Some(sample_map) = &self.samplers {
             if let Some(sampler_set) = sample_map.get(&instance.animation_index) {
                 for sampler in sampler_set {
-                    println!(
-                        "times: {:?} tranformations: {:?}",
-                        sampler.times, sampler.transforms
-                    );
                     let corresponding_sample = instance.current_samples.get(&sampler.id).unwrap();
                     // if the sampler is finished, skip it.
                     if corresponding_sample.is_none() {
@@ -189,8 +185,6 @@ impl AnimationNode {
                 Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
                 None => IDENTITY,
             };
-
-        println!("calculated transform: {:?}", transform);
         // assign the mesh transform to the proper slot for this instance
         //
         if self.node_type == NodeType::Mesh {

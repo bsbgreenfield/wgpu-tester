@@ -1,4 +1,7 @@
-use crate::{model::model::GModel, scene::util::calculate_model_mesh_offsets};
+use crate::{
+    model::{animation::animation_controller::AnimationFrame, model::GModel},
+    scene::util::calculate_model_mesh_offsets,
+};
 use cgmath::SquareMatrix;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
@@ -19,23 +22,68 @@ pub(super) struct InstanceData {
     /// All local transforms which refer to a model would be located in the range from
     /// [instance_local_offsets[model_idx] .. (instance_local_offsets[model_idx] +
     /// model.mesh_instance_count * model_instances[model_idx])]
-    instance_local_offsets: Vec<usize>,
+    model_instances_local_offsets: Vec<usize>,
 }
 
 impl InstanceData {
+    pub fn get_instance_local_offset(&self, instance_idx: usize, model_idx: usize) -> usize {
+        // the location of the first instance of this model in the local transform buffer
+        let model_local_offset = self.model_instances_local_offsets[model_idx];
+        let model_mesh_count = (self.model_instances_local_offsets[model_idx + 1]
+            - model_local_offset)
+            / self.model_instances[model_idx];
+        return model_local_offset + (instance_idx * model_mesh_count);
+    }
+
+    /// unsafe function
+    /// Each animation frame contains a reference to an array x.
+    /// This array contains one or more arrays of raw matrices [[f32;4];4] y_matrix.
+    /// for each y_matrix in x, we want replace a region of local_transform data
+    /// at the specified offset for y_matrix. y_matrix has exactly the same length as this region
+    pub fn apply_animation_frame_unchecked(&mut self, animation_frame: AnimationFrame) {
+        for (idx, offset) in animation_frame.lt_offsets.iter().enumerate() {
+            let t_slices = animation_frame.transform_slices[idx]; // y_matrix slice
+            unsafe {
+                // the model index stored in the first local transform at the provided offset
+                let model_id = self.local_transform_data.get_unchecked(*offset).model_index;
+                // the raw pointer to the region of memory that is being ovewritten
+                let ptr = self.local_transform_data.as_mut_ptr().add(*offset);
+                // for each matrix in y_matrix, overwrite pointer[i] with a LocalTransform
+                for (i, matrix) in t_slices.iter().enumerate() {
+                    std::ptr::write(
+                        ptr.add(i),
+                        LocalTransform {
+                            transform_matrix: *matrix,
+                            model_index: model_id,
+                        },
+                    );
+                }
+            }
+        }
+    }
     /// create Instance data with one instance of each model, each positioned at the origin
     pub fn default_from_scene(
-        model_count: usize,
+        models: &Vec<GModel>,
         local_transform_data: Vec<LocalTransform>,
     ) -> Self {
-        // on instance of each model
-        let model_instances: Vec<usize> = (0..model_count).into_iter().map(|_| 1).collect();
+        // one instance of each model
+        let model_instances: Vec<usize> = (0..models.len()).into_iter().map(|_| 1).collect();
         // every model goes at the origin
-        let global_transform_data: Vec<[[f32; 4]; 4]> = (0..model_count)
+        let global_transform_data: Vec<[[f32; 4]; 4]> = (0..models.len())
             .into_iter()
             .map(|_| cgmath::Matrix4::<f32>::identity().into())
             .collect();
-        let instance_local_offsets = vec![0];
+
+        let model_mesh_counts: Vec<usize> = models
+            .iter()
+            .map(|model| model.mesh_instances.iter().sum::<u32>() as usize)
+            .collect();
+        let mut model_instances_local_offsets = Vec::with_capacity(models.len());
+        model_instances_local_offsets.push(0);
+        model_mesh_counts
+            .iter()
+            .for_each(|count| model_instances_local_offsets.push(*count));
+        model_instances_local_offsets.pop();
 
         Self {
             model_instances,
@@ -43,7 +91,7 @@ impl InstanceData {
             local_transform_data,
             global_transform_buffer: None,
             global_transform_data,
-            instance_local_offsets,
+            model_instances_local_offsets,
         }
     }
 
@@ -58,7 +106,7 @@ impl InstanceData {
         let local_transform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Local transform buffer"),
             contents: bytemuck::cast_slice(&self.local_transform_data),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
         let global_transform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -129,7 +177,7 @@ impl InstanceData {
         let tot_model_count = self.model_instances.iter().sum::<usize>();
 
         // the offset for the first local transform for this model
-        let instance_offset = self.instance_local_offsets[model_index];
+        let instance_offset = self.model_instances_local_offsets[model_index];
         // the range of all the transforms that pertain to this model
         let model_mesh_range: Range<usize> = Range {
             start: instance_offset,
@@ -159,7 +207,7 @@ impl InstanceData {
         // instances just added
         let num_new_mesh_instances = model_mesh_count * new_instance_count;
         for offset_val in self
-            .instance_local_offsets
+            .model_instances_local_offsets
             .iter_mut()
             .skip(instance_offset + 1)
         {
@@ -194,7 +242,7 @@ impl InstanceData {
         self.model_instances.extend(other.model_instances);
         let model_instances = self.model_instances;
 
-        let instance_local_offsets = calculate_model_mesh_offsets(models, &model_instances);
+        let model_instances_local_offsets = calculate_model_mesh_offsets(models, &model_instances);
 
         self.local_transform_data.extend(other.local_transform_data);
         let local_transform_data = self.local_transform_data;
@@ -207,11 +255,116 @@ impl InstanceData {
 
         Self {
             model_instances,
-            instance_local_offsets,
+            model_instances_local_offsets,
             local_transform_data,
             global_transform_data,
             local_transform_buffer,
             global_transform_buffer,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_animation_frame_update() {
+        // instance data contains a scene that has two models.
+        // The first model has three mesh instances. There are two instances of the model.
+        // the second model has four mesh instances. There is one instance of the model.
+        let original_matrix_1 = [[1.0; 4]; 4];
+        let original_matrix_2 = [[2.0; 4]; 4];
+        let mut instance_data_local_transforms = vec![
+            LocalTransform {
+                transform_matrix: original_matrix_1,
+                model_index: 0,
+            };
+            6
+        ];
+        let model_2s_transforms = vec![
+            LocalTransform {
+                transform_matrix: original_matrix_2,
+                model_index: 1,
+            };
+            4
+        ];
+        instance_data_local_transforms.extend(model_2s_transforms);
+
+        // we want to change the transforms for the second instance of the first model
+        // with these values (3 matrices full of 3.0s)
+        let new_matrices = vec![[[3f32; 4]; 4]; 3];
+
+        // create the instance_data
+        let mut instance_data = InstanceData {
+            model_instances: vec![2, 1],
+            model_instances_local_offsets: vec![0, 6],
+            local_transform_buffer: None,
+            local_transform_data: instance_data_local_transforms,
+            global_transform_buffer: None,
+            global_transform_data: vec![],
+        };
+
+        //create the animation frame
+        let animation_frame = AnimationFrame {
+            lt_offsets: vec![3],
+            transform_slices: vec![&new_matrices[..]],
+        };
+
+        instance_data.apply_animation_frame_unchecked(animation_frame);
+
+        assert_eq!(
+            instance_data.local_transform_data[0].transform_matrix,
+            [[1.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[0].model_index, 0,);
+        assert_eq!(
+            instance_data.local_transform_data[1].transform_matrix,
+            [[1.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[1].model_index, 0,);
+        assert_eq!(
+            instance_data.local_transform_data[2].transform_matrix,
+            [[1.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[2].model_index, 0,);
+        // the new ones
+        assert_eq!(
+            instance_data.local_transform_data[3].transform_matrix,
+            [[3.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[3].model_index, 0,);
+        assert_eq!(
+            instance_data.local_transform_data[4].transform_matrix,
+            [[3.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[4].model_index, 0,);
+        assert_eq!(
+            instance_data.local_transform_data[5].transform_matrix,
+            [[3.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[5].model_index, 0,);
+
+        // the rest
+        assert_eq!(
+            instance_data.local_transform_data[6].transform_matrix,
+            [[2.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[6].model_index, 1,);
+        assert_eq!(
+            instance_data.local_transform_data[7].transform_matrix,
+            [[2.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[7].model_index, 1,);
+        assert_eq!(
+            instance_data.local_transform_data[8].transform_matrix,
+            [[2.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[8].model_index, 1,);
+        assert_eq!(
+            instance_data.local_transform_data[9].transform_matrix,
+            [[2.0; 4]; 4]
+        );
+        assert_eq!(instance_data.local_transform_data[9].model_index, 1,);
     }
 }

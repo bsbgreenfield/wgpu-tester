@@ -15,7 +15,7 @@ mod tests {
         assert!(controller.animations.len() == 1);
         // validate samplers
 
-        controller.initiate_animation(0);
+        controller.initialize_animation(0, 0);
         assert!(controller.active_animations.len() == 1);
         assert!(controller.active_animations[0].time_elapsed == Duration::ZERO);
         println!("{:?}", controller.active_animations[0].start_time);

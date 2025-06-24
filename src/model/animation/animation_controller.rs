@@ -6,9 +6,12 @@ use std::{
 
 use cgmath::SquareMatrix;
 
-use crate::model::animation::{
-    animation_node::{self, AnimationNode, AnimationSample},
-    util::copy_data_for_animation,
+use crate::model::{
+    animation::{
+        animation_node::{self, AnimationNode, AnimationSample},
+        util::copy_data_for_animation,
+    },
+    model::LocalTransform,
 };
 /// for each mdoel with one or more animation nodes, extract the times and translations data
 /// from the main blob and put them in the relevant samplers.
@@ -36,7 +39,6 @@ pub fn get_scene_animation_data(
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
     pub(super) active_animations: Vec<AnimationInstance>,
-    pub(super) active_model_instances: Vec<usize>,
     pub(super) animations: Vec<SimpleAnimation>,
 }
 
@@ -44,12 +46,11 @@ impl SceneAnimationController {
     pub fn new(animations: Vec<SimpleAnimation>) -> Self {
         Self {
             active_animations: vec![],
-            active_model_instances: vec![],
             animations,
         }
     }
 
-    pub fn initiate_animation(&mut self, animation_index: usize, instance_index: usize) {
+    pub fn initialize_animation(&mut self, animation_index: usize, model_instance_offset: usize) {
         // clone a shared reference to the animation node tree
         let animation_node = self.animations[animation_index].animation_node.clone();
         // get copies of the initial state of the animated nodes
@@ -61,7 +62,7 @@ impl SceneAnimationController {
             .duration_since(UNIX_EPOCH)
             .unwrap();
         let animation_instance = AnimationInstance {
-            instance_index,
+            model_instance_offset,
             animation_node,
             start_time,
             time_elapsed: Duration::ZERO,
@@ -73,30 +74,42 @@ impl SceneAnimationController {
         self.active_animations.push(animation_instance);
     }
 
-    pub fn do_animations(&mut self, timestamp: Duration) -> AnimationFrame {
-        let mut animation_frame: AnimationFrame = AnimationFrame {
-            instances: Vec::with_capacity(self.active_animations.len()),
-            transform_slices: Vec::with_capacity(self.active_animations.len()),
+    pub fn do_animations<'a>(&'a mut self, timestamp: Duration) -> Option<AnimationFrame<'a>> {
+        // TODO REMOVE BETTER
+        if self.active_animations.len() > 0 && self.active_animations[0].is_done {
+            self.active_animations.remove(0);
+            return None;
+        }
+        let len = self.active_animations.len();
+        if len == 0 {
+            return None;
+        }
+        let mut frame = AnimationFrame {
+            transform_slices: Vec::with_capacity(len),
+            lt_offsets: Vec::with_capacity(len),
         };
         for animation_instance in self.active_animations.iter_mut() {
-            let idx = animation_instance.instance_index.clone();
-            let instance_transforms = animation_instance.process_animation_frame(timestamp);
-            animation_frame.transform_slices.push(instance_transforms);
-            animation_frame.instances.push(idx);
+            frame
+                .lt_offsets
+                .push(animation_instance.model_instance_offset);
+            frame
+                .transform_slices
+                .push(animation_instance.process_animation_frame(timestamp));
         }
-        animation_frame
+        Some(frame)
     }
 }
 
 pub struct AnimationFrame<'a> {
-    instances: Vec<usize>,
-    transform_slices: Vec<&'a [[[f32; 4]; 4]]>,
+    pub lt_offsets: Vec<usize>,
+    pub transform_slices: Vec<&'a [[[f32; 4]; 4]]>,
 }
 
 pub(super) struct AnimationInstance {
     /// the node tree for the model
     animation_node: Rc<AnimationNode>,
-    pub(super) instance_index: usize,
+    /// the offset in the local transform buffer that this instance affects
+    pub(super) model_instance_offset: usize,
     pub(super) start_time: Duration,
     pub(super) time_elapsed: Duration,
     /// global index of the animation as defined in the gltf file

@@ -181,6 +181,10 @@ impl<'a> AppState<'a> {
         if self.input_controller.key_w_down {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
+        if self.input_controller.key_e_down {
+            self.gscene.initialize_animation(0, 0, 0);
+            self.input_controller.key_e_down = false;
+        }
         // if self.input_controller.key_q_down {
         //     self.scene
         //         .update_camera_rot(cgmath::point3(-speed, 0.0, 0.0));
@@ -200,7 +204,13 @@ impl<'a> AppState<'a> {
         self.process_input();
         let time = std::time::SystemTime::now();
         let timestamp = time.duration_since(std::time::UNIX_EPOCH).unwrap();
-        self.gscene.animate_frame(timestamp);
+        if self.gscene.get_animation_frame(timestamp) {
+            self.app_config.queue.write_buffer(
+                self.gscene.get_local_transform_buffer().as_ref().unwrap(),
+                0,
+                bytemuck::cast_slice(self.gscene.get_global_transform_data()),
+            );
+        }
         Ok(())
     }
 

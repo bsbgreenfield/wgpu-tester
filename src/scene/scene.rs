@@ -23,8 +23,29 @@ pub struct GScene {
 }
 
 impl GScene {
-    pub fn animate_frame(&mut self, timestamp: Duration) {
-        self.animation_controller.do_animations(timestamp);
+    pub fn initialize_animation(
+        &mut self,
+        model_id: usize,
+        instance_idx: usize,
+        animation_index: usize,
+    ) {
+        let offset = self
+            .instance_data
+            .get_instance_local_offset(instance_idx, model_id);
+        self.animation_controller
+            .initialize_animation(animation_index, offset);
+    }
+    pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
+        let maybe_animation_frame = self.animation_controller.do_animations(timestamp);
+        match maybe_animation_frame {
+            Some(animation_frame) => {
+                self.instance_data
+                    .apply_animation_frame_unchecked(animation_frame);
+
+                return true;
+            }
+            None => return false,
+        }
     }
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);
@@ -124,13 +145,9 @@ impl GSceneData {
         scene
     }
     pub fn build_scene_uninit(self) -> GScene {
-        let instance_data =
-            InstanceData::default_from_scene(self.models.len(), self.local_transforms);
+        let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
-        for animation in self.simple_animations.iter() {
-            animation.print();
-        }
         let animation_controller = SceneAnimationController::new(self.simple_animations);
 
         GScene {
