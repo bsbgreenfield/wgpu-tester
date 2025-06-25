@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::Deref, time::Duration};
 
-use cgmath::Vector3;
+use cgmath::{InnerSpace, Matrix, Vector3};
 use gltf::{animation::Channel, Node};
 use winit::raw_window_handle_05::Active;
 
@@ -91,10 +91,12 @@ impl AnimationNode {
         instance: &mut AnimationInstance,
         base_translation: cgmath::Matrix4<f32>,
         current_mesh_id: &mut usize,
-    ) {
+    ) -> bool {
         let mut rotation: Option<cgmath::Quaternion<f32>> = None;
         let mut translation: Option<cgmath::Vector3<f32>> = None;
         let mut scale: Option<cgmath::Vector3<f32>> = None;
+        let mut node_is_done: bool = true;
+
         if let Some(sample_map) = &self.samplers {
             if let Some(sampler_set) = sample_map.get(&instance.animation_index) {
                 for sampler in sampler_set {
@@ -120,13 +122,12 @@ impl AnimationNode {
                             let second_transform = sampler.transforms[i + 1];
                             let amount: f32 = (instance.time_elapsed.as_secs_f32()
                                 - sampler.times[i])
-                                / (sampler.times[i + 1] - sampler.times[i])
-                                - sampler.times[i];
+                                / (sampler.times[i + 1] - sampler.times[i]);
                             match sampler.animation_type {
                                 AnimationType::Rotation => {
-                                    let q1 = cgmath::Quaternion::from(first_transform);
-                                    let q2 = cgmath::Quaternion::from(second_transform);
-                                    rotation = Some(q1.nlerp(q2, amount));
+                                    let q1 = cgmath::Quaternion::from(first_transform).normalize();
+                                    let q2 = cgmath::Quaternion::from(second_transform).normalize();
+                                    rotation = Some(q1.nlerp(q2, amount.abs()));
                                 }
                                 AnimationType::Translation => {
                                     let t_diff = cgmath::Vector3::<f32>::from([
@@ -145,13 +146,14 @@ impl AnimationNode {
                             };
                             *instance.current_samples.get_mut(&sampler.id).unwrap() =
                                 Some(current_sample);
+                            node_is_done = false;
                         }
                         SampleResult::Done(finished_sample) => {
                             let i = finished_sample.transform_index as usize;
                             let transform = sampler.transforms[i];
                             match sampler.animation_type {
                                 AnimationType::Rotation => {
-                                    let q1 = cgmath::Quaternion::from(transform);
+                                    let q1 = cgmath::Quaternion::from(transform).normalize();
                                     rotation = Some(q1);
                                 }
                                 AnimationType::Translation => {
@@ -163,15 +165,6 @@ impl AnimationNode {
                                 }
                                 _ => todo!("implement scaling!!!"),
                             };
-                            let mut is_done = true;
-                            // this sample just turned into a None value,
-                            // this is a good time to check if the whole animation is done
-                            for a in instance.current_samples.values() {
-                                if a.is_some() {
-                                    is_done = false;
-                                }
-                            }
-                            instance.is_done = is_done;
                             *instance.current_samples.get_mut(&sampler.id).unwrap() = None;
                         }
                     }
@@ -192,8 +185,11 @@ impl AnimationNode {
             *current_mesh_id += 1;
         }
         for child_node in &self.children {
-            child_node.update_mesh_transforms(instance, transform, current_mesh_id);
+            if !child_node.update_mesh_transforms(instance, transform, current_mesh_id) {
+                node_is_done = false;
+            }
         }
+        node_is_done
     }
 
     pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
@@ -205,6 +201,7 @@ impl AnimationNode {
                 node_type: NodeType::Mesh,
                 node_id: node.index(),
             },
+
             None => AnimationNode {
                 children,
                 transform: cgmath::Matrix4::from(node.transform().matrix()),

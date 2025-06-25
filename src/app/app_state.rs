@@ -182,7 +182,7 @@ impl<'a> AppState<'a> {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
         if self.input_controller.key_e_down {
-            self.gscene.initialize_animation(0, 0, 0);
+            self.gscene.initialize_animation(1, 0, 0);
             self.input_controller.key_e_down = false;
         }
         // if self.input_controller.key_q_down {
@@ -208,7 +208,7 @@ impl<'a> AppState<'a> {
             self.app_config.queue.write_buffer(
                 self.gscene.get_local_transform_buffer().as_ref().unwrap(),
                 0,
-                bytemuck::cast_slice(self.gscene.get_global_transform_data()),
+                bytemuck::cast_slice(self.gscene.get_local_transform_data()),
             );
         }
         Ok(())

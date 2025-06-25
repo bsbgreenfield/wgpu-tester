@@ -83,8 +83,7 @@ impl InstanceData {
         model_mesh_counts
             .iter()
             .for_each(|count| model_instances_local_offsets.push(*count));
-        model_instances_local_offsets.pop();
-
+        // leave the final value in order to calculate the last model's mesh count
         Self {
             model_instances,
             local_transform_buffer: None,

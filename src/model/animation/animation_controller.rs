@@ -38,6 +38,7 @@ pub fn get_scene_animation_data(
 /// 2. owning all animation structs
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
+    dead_animations: Vec<usize>,
     pub(super) active_animations: Vec<AnimationInstance>,
     pub(super) animations: Vec<SimpleAnimation>,
 }
@@ -45,6 +46,7 @@ pub struct SceneAnimationController {
 impl SceneAnimationController {
     pub fn new(animations: Vec<SimpleAnimation>) -> Self {
         Self {
+            dead_animations: vec![],
             active_animations: vec![],
             animations,
         }
@@ -75,26 +77,28 @@ impl SceneAnimationController {
     }
 
     pub fn do_animations<'a>(&'a mut self, timestamp: Duration) -> Option<AnimationFrame<'a>> {
-        // TODO REMOVE BETTER
-        if self.active_animations.len() > 0 && self.active_animations[0].is_done {
-            self.active_animations.remove(0);
-            return None;
+        let dead_animations_len = self.dead_animations.len();
+        for _ in 0..dead_animations_len {
+            let dead = self.dead_animations.pop().unwrap();
+            self.active_animations.remove(dead);
         }
         let len = self.active_animations.len();
         if len == 0 {
             return None;
         }
+
         let mut frame = AnimationFrame {
             transform_slices: Vec::with_capacity(len),
             lt_offsets: Vec::with_capacity(len),
         };
-        for animation_instance in self.active_animations.iter_mut() {
-            frame
-                .lt_offsets
-                .push(animation_instance.model_instance_offset);
-            frame
-                .transform_slices
-                .push(animation_instance.process_animation_frame(timestamp));
+        for (idx, animation_instance) in self.active_animations.iter_mut().enumerate() {
+            let offset = animation_instance.model_instance_offset;
+            frame.lt_offsets.push(offset);
+            let (transforms, done) = animation_instance.process_animation_frame(timestamp);
+            frame.transform_slices.push(transforms);
+            if done {
+                self.dead_animations.push(idx);
+            }
         }
         Some(frame)
     }
@@ -126,13 +130,13 @@ pub(super) struct AnimationInstance {
 impl AnimationInstance {
     /// given the current timestamp, mutate this instance's mesh transforms,
     /// and return it as a slice
-    fn process_animation_frame(&mut self, timestamp: Duration) -> &[[[f32; 4]; 4]] {
+    fn process_animation_frame(&mut self, timestamp: Duration) -> (&[[[f32; 4]; 4]], bool) {
         self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
         // i dont think its a big problem, but its annoying.
         let node = self.animation_node.clone();
-        node.update_mesh_transforms(self, cgmath::Matrix4::<f32>::identity(), &mut 0);
-        return &self.mesh_transforms[..];
+        let done = node.update_mesh_transforms(self, cgmath::Matrix4::<f32>::identity(), &mut 0);
+        return (&self.mesh_transforms[..], done);
     }
 }
 

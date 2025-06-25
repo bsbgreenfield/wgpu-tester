@@ -108,6 +108,9 @@ impl GScene {
     pub fn get_vertex_buffer(&self) -> &Option<wgpu::Buffer> {
         return &self.vertex_data.vertex_buffer;
     }
+    pub fn get_local_transform_data(&self) -> &Vec<LocalTransform> {
+        &self.instance_data.local_transform_data
+    }
     pub fn get_local_transform_buffer(&self) -> &Option<wgpu::Buffer> {
         &self.instance_data.local_transform_buffer
     }
