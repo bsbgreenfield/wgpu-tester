@@ -3,12 +3,15 @@ use std::{collections::HashMap, time::Duration};
 use cgmath::{InnerSpace, Vector3};
 use gltf::{animation::Channel, Node};
 
-use crate::model::animation::{
-    animation_controller::AnimationInstance,
-    util::{
-        get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
-        IDENTITY, NO_ROTATION, NO_TRANSLATION,
+use crate::{
+    model::animation::{
+        animation_controller::AnimationInstance,
+        util::{
+            get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
+            IDENTITY, NO_ROTATION, NO_TRANSLATION,
+        },
     },
+    transforms,
 };
 
 type ModelAnimationMap = HashMap<usize, Vec<AnimationSampler>>;
@@ -85,19 +88,24 @@ impl AnimationNode {
             }
         }
     }
+
     pub(super) fn update_mesh_transforms(
         &self,
         instance: &mut AnimationInstance,
         base_translation: cgmath::Matrix4<f32>,
         current_mesh_id: &mut usize,
     ) -> bool {
-        let mut rotation: Option<cgmath::Quaternion<f32>> = None;
-        let mut translation: Option<cgmath::Vector3<f32>> = None;
-        let scale: Option<cgmath::Vector3<f32>> = None;
         let mut node_is_done: bool = true;
+
+        // optionaly allocate for a unique transform composed of TRS components
+        // otherwise this nodes transform is base * current
+        let mut composed_transform: Option<cgmath::Matrix4<f32>> = None;
 
         if let Some(sample_map) = &self.samplers {
             if let Some(sampler_set) = sample_map.get(&instance.animation_index) {
+                let mut rotation: Option<cgmath::Quaternion<f32>> = None;
+                let mut translation: Option<cgmath::Vector3<f32>> = None;
+                let scale: Option<cgmath::Vector3<f32>> = None;
                 for sampler in sampler_set {
                     let corresponding_sample = instance.current_samples.get(&sampler.id).unwrap();
                     // if the sampler is finished, skip it.
@@ -167,23 +175,31 @@ impl AnimationNode {
                         }
                     }
                 }
+                composed_transform = Some(
+                    base_translation
+                        * cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
+                        * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
+                        * match scale {
+                            Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
+                            None => IDENTITY,
+                        },
+                );
             }
-        } // apply the new transform to the base translation using the optional TRS components
-        let transform = base_translation
-            * cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
-            * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
-            * match scale {
-                Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
-                None => IDENTITY,
-            };
+        }
+        // apply the new transform to the base translation using the optional TRS components
         // assign the mesh transform to the proper slot for this instance
-        //
         if self.node_type == NodeType::Mesh {
-            instance.mesh_transforms[*current_mesh_id] = transform.into();
+            instance.mesh_transforms[*current_mesh_id] = composed_transform
+                .unwrap_or(base_translation * self.transform)
+                .into();
             *current_mesh_id += 1;
         }
         for child_node in &self.children {
-            if !child_node.update_mesh_transforms(instance, transform, current_mesh_id) {
+            if !child_node.update_mesh_transforms(
+                instance,
+                composed_transform.unwrap_or(base_translation * self.transform),
+                current_mesh_id,
+            ) {
                 node_is_done = false;
             }
         }
