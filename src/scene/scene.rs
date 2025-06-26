@@ -7,6 +7,7 @@ use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
+use crate::scene::scene_scaffolds::SceneScaffold;
 use wgpu::util::DeviceExt;
 
 use super::camera::Camera;
@@ -63,7 +64,9 @@ impl GScene {
             return Ok(self.instance_data.global_transform_buffer.as_ref().unwrap());
         }
         Err(InitializationError::InstanceDataInitializationError(
-            "Global buffer has not been initialized! Please call InstanceData.init() when your data is ready",
+            Box::new(String::from(    
+            "Global buffer has not been initialized! Please call InstanceData.init() when your data is ready"
+            ))
         ))
     }
     pub fn update_global_transform(
@@ -146,6 +149,29 @@ impl GSceneData {
         let mut scene = self.build_scene_uninit();
         scene.init(device, aspect_ratio);
         scene
+    }
+
+    pub fn build_scene_from_scaffold(
+        self,
+        device: &wgpu::Device,
+        aspect_ratio: f32,
+        scaffold: &SceneScaffold,
+    ) -> Result<GScene, InitializationError> {
+        let instance_data =
+            InstanceData::from_scaffold(scaffold, self.local_transforms, &self.models)?;
+        let vertex_data = VertexData::from_data(self.vertex_vec);
+        let index_data = IndexData::from_data(self.index_vec);
+        let animation_controller = SceneAnimationController::new(self.simple_animations);
+        let mut scene = GScene {
+            animation_controller,
+            models: self.models,
+            vertex_data,
+            instance_data,
+            index_data,
+            camera: None,
+        };
+        scene.init(device, aspect_ratio);
+        return Ok(scene);
     }
     pub fn build_scene_uninit(self) -> GScene {
         let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms);

@@ -1,6 +1,7 @@
 use crate::{
     model::{animation::animation_controller::AnimationFrame, model::GModel},
-    scene::util::calculate_model_mesh_offsets,
+    scene::{scene_scaffolds::SceneScaffold, util::calculate_model_mesh_offsets},
+    transforms,
 };
 use cgmath::SquareMatrix;
 use std::ops::Range;
@@ -92,6 +93,57 @@ impl InstanceData {
             global_transform_data,
             model_instances_local_offsets,
         }
+    }
+
+    pub fn from_scaffold(
+        scaffold: &SceneScaffold,
+        local_transform_data: Vec<LocalTransform>,
+        models: &Vec<GModel>,
+    ) -> Result<Self, InitializationError> {
+        let mut model_instances = Vec::new();
+        let mut global_transform_data = Vec::new();
+        // fill out the data for model instances and global transform
+        // data assuming that there will be one instance of each model
+        for _ in models.iter() {
+            model_instances.push(1);
+            global_transform_data.push(transforms::identity());
+        }
+        // apply the transform values for the base instances, if any
+        for gt_override in scaffold.global_transform_overrides {
+            global_transform_data[gt_override.model_idx] = gt_override.transform;
+        }
+        // build out the model instance offset vec with the proper values,
+        // with one extra value at the end to calculate the last model instances mesh count
+        let model_mesh_counts: Vec<usize> = models
+            .iter()
+            .map(|model| model.mesh_instances.iter().sum::<u32>() as usize)
+            .collect();
+        let mut model_instances_local_offsets: Vec<usize> = Vec::with_capacity(models.len() + 1);
+        model_instances_local_offsets.push(0);
+        model_mesh_counts.iter().for_each(|mesh_count| {
+            model_instances_local_offsets.push(*mesh_count);
+        });
+        let mut instance_data = Self {
+            model_instances,
+            local_transform_buffer: None,
+            local_transform_data,
+            global_transform_buffer: None,
+            global_transform_data,
+            model_instances_local_offsets,
+        };
+
+        // add the additional instances
+        for additional_instance in scaffold.additional_instances {
+            let result = instance_data.add_model_instance(
+                models,
+                additional_instance.model_index,
+                additional_instance.global_transforms.to_vec(),
+            );
+            if let Err(e) = result {
+                return Err(e);
+            }
+        }
+        Ok(instance_data)
     }
 
     pub fn update_global_transform_x(&mut self, instance_idx: usize, new_transform: [[f32; 4]; 4]) {

@@ -8,21 +8,24 @@ use crate::{
 };
 #[allow(dead_code)]
 pub struct ScaffoldGlobalTransforms {
-    instance_index: usize,
-    model_index: usize,
-    transform: [[f32; 4]; 4],
+    pub transform: [[f32; 4]; 4],
 }
 #[allow(dead_code)]
-pub struct ScaffoldModelInstances<'a> {
-    model_index: usize,
-    transform: &'a [[[f32; 4]; 4]],
+pub struct AdditionalScaffoldModelInstances<'a> {
+    pub model_index: usize,
+    pub additional_instance_count: usize,
+    pub global_transforms: &'a [[[f32; 4]; 4]],
 }
 
+pub struct ScaffoldGTOverride {
+    pub transform: [[f32; 4]; 4],
+    pub model_idx: usize,
+}
 #[allow(dead_code)]
 pub struct SceneScaffold<'a> {
     file_paths: &'a [&'a str],
-    global_transforms: &'a [ScaffoldGlobalTransforms],
-    instances: &'a [ScaffoldModelInstances<'a>],
+    pub additional_instances: &'a [AdditionalScaffoldModelInstances<'a>],
+    pub global_transform_overrides: &'a [ScaffoldGTOverride],
 }
 impl<'a> SceneScaffold<'a> {
     pub fn create(
@@ -34,68 +37,61 @@ impl<'a> SceneScaffold<'a> {
         let gltf_data: GltfData = GltfLoader::load_gltf(self.file_paths[0])
             .map_err(|_| InitializationError::SceneInitializationError)?; // onyl one file path??
         let scene_data = GSceneData::new(gltf_data);
-        let scene = scene_data.build_scene_init(device, aspect_ratio);
+        let scene = scene_data.build_scene_from_scaffold(device, aspect_ratio, self)?;
         Ok(scene)
     }
 }
 
 pub const CUBE: SceneScaffold = SceneScaffold {
     file_paths: &["box"],
-    global_transforms: &[],
-    instances: &[],
+    global_transform_overrides: &[],
+    additional_instances: &[AdditionalScaffoldModelInstances {
+        model_index: 0,
+        additional_instance_count: 1,
+        global_transforms: &[transforms::translation(5.0, 5.0, 0.0)],
+    }],
 };
 pub const FOX: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
     file_paths: &["fox"],
-    global_transforms: &[],
-    instances: &[],
+    additional_instances: &[],
 };
 pub const TRUCK: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
     file_paths: &["milk-truck"],
-    global_transforms: &[],
-    instances: &[],
+    additional_instances: &[],
 };
 pub const BRAIN: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
     file_paths: &["brain-stem"],
-    global_transforms: &[],
-    instances: &[],
+    additional_instances: &[],
 };
 pub const DRAGON: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
     file_paths: &["dragon"],
-    global_transforms: &[],
-    instances: &[],
+    additional_instances: &[],
 };
 pub const BOX_ANIMATED: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
     file_paths: &["box-animated"],
-    global_transforms: &[],
-    instances: &[],
+    additional_instances: &[],
 };
-const fn buggy_shrink(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
-    ScaffoldGlobalTransforms {
-        instance_index,
-        model_index,
-        transform: transforms::scale(0.02),
-    }
-}
-const fn move_right(instance_index: usize, model_index: usize) -> ScaffoldGlobalTransforms {
-    ScaffoldGlobalTransforms {
-        instance_index,
-        model_index,
-        transform: transforms::translation(5.0, 0.0, 0.0),
-    }
-}
-pub const BUGGY: SceneScaffold = SceneScaffold {
-    file_paths: &["buggy"],
-    global_transforms: &[buggy_shrink(0, 0)],
-    instances: &[],
+pub const CMAN: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
+    file_paths: &["cesium-man"],
+    additional_instances: &[],
 };
 pub const TRUCK_BOX: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[ScaffoldGTOverride {
+        model_idx: 1,
+        transform: transforms::translation(5.0, 0.0, 0.0),
+    }],
     file_paths: &["milk-truck", "box"],
-    global_transforms: &[move_right(0, 1)],
-    instances: &[],
+    additional_instances: &[],
 };
 
-pub const BUGGY_BOX: SceneScaffold = SceneScaffold {
-    file_paths: &["buggy", "milk-truck"],
-    global_transforms: &[buggy_shrink(0, 0), move_right(0, 1)],
-    instances: &[],
+pub const MONKEY: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
+    file_paths: &["monkey"],
+    additional_instances: &[],
 };

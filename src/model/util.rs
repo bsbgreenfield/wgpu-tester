@@ -14,9 +14,9 @@ pub enum GltfErrors {
 }
 
 #[derive(Debug)]
-pub enum InitializationError<'a> {
-    InstanceDataInitializationError(&'a str),
-    SceneMergeError(&'a str),
+pub enum InitializationError {
+    InstanceDataInitializationError(Box<String>),
+    SceneMergeError(Box<String>),
     SceneInitializationError,
 }
 
