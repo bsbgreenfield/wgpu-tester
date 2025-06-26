@@ -4,7 +4,7 @@ use std::{
 };
 
 use cgmath::SquareMatrix;
-use gltf::{animation::Channel, json::extensions::mesh, Gltf};
+use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
     animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
@@ -17,7 +17,6 @@ struct ModelMeshData {
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     transformation_matrices: Vec<LocalTransform>,
-    animation_node: Option<AnimationNode>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -25,7 +24,6 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             transformation_matrices: Vec::new(),
-            animation_node: None,
         }
     }
 }

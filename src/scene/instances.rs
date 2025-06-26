@@ -283,7 +283,7 @@ impl InstanceData {
 
         Ok(())
     }
-
+    #[allow(dead_code)]
     /// merge the instance data together
     pub fn merge(mut self, mut other: Self, models: &Vec<GModel>) -> Self {
         let number_of_models = self.model_instances.iter().sum::<usize>();

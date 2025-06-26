@@ -17,17 +17,17 @@ mod tests {
 
         controller.initialize_animation(0, 0);
         assert!(controller.active_animations.len() == 1);
-        assert!(controller.active_animations[0].time_elapsed == Duration::ZERO);
-        println!("{:?}", controller.active_animations[0].start_time);
-        assert!(controller.active_animations[0].current_samples.len() == 2);
-        assert!(controller.active_animations[0].current_samples[&0].is_some());
+        assert!(controller.active_animations[0][0].time_elapsed == Duration::ZERO);
+        println!("{:?}", controller.active_animations[0][0].start_time);
+        assert!(controller.active_animations[0][0].current_samples.len() == 2);
+        assert!(controller.active_animations[0][0].current_samples[&0].is_some());
         let start_time = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap();
 
         controller.do_animations(start_time);
         assert_eq!(
-            controller.active_animations[0]
+            controller.active_animations[0][0]
                 .current_samples
                 .get(&0)
                 .unwrap()
@@ -36,7 +36,7 @@ mod tests {
             1.25
         );
         assert_eq!(
-            controller.active_animations[0]
+            controller.active_animations[0][0]
                 .current_samples
                 .get(&0)
                 .unwrap()
@@ -44,9 +44,9 @@ mod tests {
                 .transform_index,
             -1
         );
-        assert!(controller.active_animations[0].current_samples[&1].is_some());
+        assert!(controller.active_animations[0][0].current_samples[&1].is_some());
         assert_eq!(
-            controller.active_animations[0]
+            controller.active_animations[0][0]
                 .current_samples
                 .get(&1)
                 .unwrap()
@@ -55,7 +55,7 @@ mod tests {
             1.25
         );
         assert_eq!(
-            controller.active_animations[0]
+            controller.active_animations[0][0]
                 .current_samples
                 .get(&1)
                 .unwrap()
@@ -64,7 +64,7 @@ mod tests {
             0
         );
 
-        assert_eq!(controller.active_animations[0].mesh_transforms.len(), 2);
+        assert_eq!(controller.active_animations[0][0].mesh_transforms.len(), 2);
         controller.do_animations(start_time + Duration::from_secs(1));
         controller.do_animations(start_time + Duration::from_millis(1500));
         controller.do_animations(start_time + Duration::from_millis(2600));

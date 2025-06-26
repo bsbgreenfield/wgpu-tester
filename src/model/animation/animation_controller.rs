@@ -1,17 +1,14 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     rc::Rc,
     time::{Duration, UNIX_EPOCH},
 };
 
 use cgmath::SquareMatrix;
 
-use crate::model::{
-    animation::{
-        animation_node::{self, AnimationNode, AnimationSample},
-        util::copy_data_for_animation,
-    },
-    model::LocalTransform,
+use crate::model::animation::{
+    animation_node::{AnimationNode, AnimationSample},
+    util::copy_data_for_animation,
 };
 /// for each mdoel with one or more animation nodes, extract the times and translations data
 /// from the main blob and put them in the relevant samplers.
@@ -39,15 +36,19 @@ pub fn get_scene_animation_data(
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
     dead_animations: Vec<usize>,
-    pub(super) active_animations: Vec<AnimationInstance>,
+    pub(super) active_animations: Vec<VecDeque<AnimationInstance>>,
     pub(super) animations: Vec<SimpleAnimation>,
 }
 
 impl SceneAnimationController {
     pub fn new(animations: Vec<SimpleAnimation>) -> Self {
+        let mut active_animations = Vec::with_capacity(animations.len());
+        for _ in 0..animations.len() {
+            active_animations.push(VecDeque::with_capacity(10));
+        }
         Self {
-            dead_animations: vec![],
-            active_animations: vec![],
+            dead_animations: vec![0; animations.len()],
+            active_animations,
             animations,
         }
     }
@@ -71,16 +72,17 @@ impl SceneAnimationController {
             animation_index,
             mesh_transforms,
             current_samples: sample_map,
-            is_done: false,
         };
-        self.active_animations.push(animation_instance);
+        self.active_animations[animation_index].push_back(animation_instance);
     }
 
     pub fn do_animations<'a>(&'a mut self, timestamp: Duration) -> Option<AnimationFrame<'a>> {
-        let dead_animations_len = self.dead_animations.len();
-        for _ in 0..dead_animations_len {
-            let dead = self.dead_animations.pop().unwrap();
-            self.active_animations.remove(dead);
+        for (idx, dead_animation_count) in self.dead_animations.iter_mut().enumerate() {
+            let count = dead_animation_count.clone();
+            for _ in 0..count {
+                self.active_animations[idx].pop_front();
+                *dead_animation_count -= 1;
+            }
         }
         let len = self.active_animations.len();
         if len == 0 {
@@ -91,13 +93,15 @@ impl SceneAnimationController {
             transform_slices: Vec::with_capacity(len),
             lt_offsets: Vec::with_capacity(len),
         };
-        for (idx, animation_instance) in self.active_animations.iter_mut().enumerate() {
-            let offset = animation_instance.model_instance_offset;
-            frame.lt_offsets.push(offset);
-            let (transforms, done) = animation_instance.process_animation_frame(timestamp);
-            frame.transform_slices.push(transforms);
-            if done {
-                self.dead_animations.push(idx);
+        for (idx, animation_bucket) in self.active_animations.iter_mut().enumerate() {
+            for animation_instance in animation_bucket.iter_mut() {
+                let offset = animation_instance.model_instance_offset;
+                frame.lt_offsets.push(offset);
+                let (transforms, done) = animation_instance.process_animation_frame(timestamp);
+                frame.transform_slices.push(transforms);
+                if done {
+                    self.dead_animations[idx] += 1;
+                }
             }
         }
         Some(frame)
@@ -124,7 +128,6 @@ pub(super) struct AnimationInstance {
     /// a map of sampler id -> sample
     /// used to keep track of the last frames data
     pub(super) current_samples: HashMap<usize, Option<AnimationSample>>,
-    pub(super) is_done: bool,
 }
 
 impl AnimationInstance {

@@ -1,8 +1,7 @@
-use std::{collections::HashMap, ops::Deref, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
-use cgmath::{InnerSpace, Matrix, Vector3};
+use cgmath::{InnerSpace, Vector3};
 use gltf::{animation::Channel, Node};
-use winit::raw_window_handle_05::Active;
 
 use crate::model::animation::{
     animation_controller::AnimationInstance,
@@ -72,7 +71,7 @@ impl AnimationNode {
     ) {
         match &mut self.samplers {
             Some(sampler_map) => {
-                if let Some(sampler_set) = sampler_map.get_mut(&animation_index) {
+                if let Some(_) = sampler_map.get_mut(&animation_index) {
                     //TODO: return a result
                     panic!("we already assigned the samplers for this animation!");
                 } else {
@@ -94,7 +93,7 @@ impl AnimationNode {
     ) -> bool {
         let mut rotation: Option<cgmath::Quaternion<f32>> = None;
         let mut translation: Option<cgmath::Vector3<f32>> = None;
-        let mut scale: Option<cgmath::Vector3<f32>> = None;
+        let scale: Option<cgmath::Vector3<f32>> = None;
         let mut node_is_done: bool = true;
 
         if let Some(sample_map) = &self.samplers {
@@ -148,9 +147,8 @@ impl AnimationNode {
                                 Some(current_sample);
                             node_is_done = false;
                         }
-                        SampleResult::Done(finished_sample) => {
-                            let i = finished_sample.transform_index as usize;
-                            let transform = sampler.transforms[i];
+                        SampleResult::Done(last_index) => {
+                            let transform = sampler.transforms[last_index];
                             match sampler.animation_type {
                                 AnimationType::Rotation => {
                                     let q1 = cgmath::Quaternion::from(transform).normalize();
@@ -194,7 +192,7 @@ impl AnimationNode {
 
     pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
         match node.mesh() {
-            Some(mesh) => AnimationNode {
+            Some(_) => AnimationNode {
                 children,
                 transform: cgmath::Matrix4::from(node.transform().matrix()),
                 samplers: None,
@@ -226,21 +224,13 @@ impl AnimationNode {
 #[derive(Copy, Clone, Debug)]
 enum SampleResult {
     Active(AnimationSample),
-    Done(AnimationSample),
+    Done(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct AnimationSample {
     pub(super) end_time: f32,
     pub(super) transform_index: i32,
-}
-impl SampleResult {
-    fn unwrap(self) -> AnimationSample {
-        match self {
-            Self::Active(a) => a,
-            Self::Done(a) => a,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -297,10 +287,7 @@ impl AnimationSampler {
                     });
                 }
             }
-            return SampleResult::Done(AnimationSample {
-                end_time: self.times[self.times.len() - 1],
-                transform_index: self.times.len() as i32 - 1,
-            });
+            return SampleResult::Done(self.times.len() - 1);
         }
         return SampleResult::Active(current_sample);
     }
