@@ -47,6 +47,12 @@ impl App<'_> {
                 KeyCode::KeyE => {
                     app_state.input_controller.key_e_down = is_pressed;
                 }
+                KeyCode::Digit1 => {
+                    app_state.input_controller.key_1_down = is_pressed;
+                }
+                KeyCode::Digit2 => {
+                    app_state.input_controller.key_2_down = is_pressed;
+                }
                 KeyCode::Escape => {
                     event_loop.exit();
                 }

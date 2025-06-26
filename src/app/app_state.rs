@@ -13,6 +13,8 @@ pub struct InputController {
     pub key_s_down: bool,
     pub key_q_down: bool,
     pub key_e_down: bool,
+    pub key_1_down: bool,
+    pub key_2_down: bool,
 }
 impl InputController {
     pub fn new() -> Self {
@@ -23,6 +25,8 @@ impl InputController {
             key_w_down: false,
             key_q_down: false,
             key_e_down: false,
+            key_1_down: false,
+            key_2_down: false,
         }
     }
 }
@@ -181,8 +185,12 @@ impl<'a> AppState<'a> {
         if self.input_controller.key_w_down {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
-        if self.input_controller.key_e_down {
+        if self.input_controller.key_1_down {
             self.gscene.initialize_animation(1, 0, 0);
+            self.input_controller.key_e_down = false;
+        }
+        if self.input_controller.key_2_down {
+            self.gscene.initialize_animation(1, 1, 0);
             self.input_controller.key_e_down = false;
         }
         // if self.input_controller.key_q_down {
