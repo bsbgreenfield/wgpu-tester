@@ -1,33 +1,32 @@
 use std::{
+    collections::HashMap,
     fs::{self, ReadDir},
-    ops::Deref,
     path::PathBuf,
 };
 
-use cgmath::{InnerSpace, Matrix, Matrix4, Quaternion, SquareMatrix, Vector3};
+use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
-use crate::{
-    model::{
-        animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
-        loader::loader::GltfFileLoadError,
-        model::{GModel, LocalTransform},
-        util::get_model_meshes,
-    },
-    transforms::{scale, translation},
+use crate::model::{
+    animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
+    loader::loader::GltfFileLoadError,
+    model::{GModel, LocalTransform},
+    util::get_model_meshes,
 };
 
 struct ModelMeshData {
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
-    transformation_matrices: Vec<LocalTransform>,
+    mesh_transform_buckets: Vec<Vec<LocalTransform>>,
+    node_to_lt_index_map: HashMap<usize, usize>,
 }
 impl ModelMeshData {
     fn new() -> Self {
         Self {
+            node_to_lt_index_map: HashMap::new(),
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
-            transformation_matrices: Vec::new(),
+            mesh_transform_buckets: Vec::new(),
         }
     }
 }
@@ -62,15 +61,6 @@ pub(super) fn load_models_from_gltf<'a>(
             continue;
         }
 
-        // get a animation node trees
-        let maybe_animation_node = load_animations(&root_node, animations);
-        // create a new SimpleAnimation
-        // models are indexed by the order in which they are aded to the scenes
-        // [models] field.
-        if let Some(animation_node) = maybe_animation_node {
-            simple_animations.push(SimpleAnimation::new(animation_node, models.len()));
-        }
-
         // mesh data
         model_mesh_data = find_model_meshes(
             root_node,
@@ -78,13 +68,35 @@ pub(super) fn load_models_from_gltf<'a>(
             model_mesh_data,
         );
 
+        // get a animation node trees
+        let maybe_animation_node = load_animations(&root_node, animations);
+        // create a new SimpleAnimation
+        // models are indexed by the order in which they are aded to the scenes
+        // [models] field.
+        if let Some(animation_node) = maybe_animation_node {
+            simple_animations.push(SimpleAnimation::new(
+                animation_node,
+                models.len(),
+                model_mesh_data.node_to_lt_index_map,
+            ));
+        }
+
         // instantiate meshes, instantiate model
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
+        let mi_len = model_mesh_data.mesh_instances.len().clone();
         let g_model = GModel::new(meshes, model_mesh_data.mesh_instances);
 
+        assert_eq!(model_mesh_data.mesh_ids.len(), mi_len,);
+        assert_eq!(
+            model_mesh_data.mesh_transform_buckets.len(),
+            model_mesh_data.mesh_ids.len()
+        );
         // add the local transformations to the running vec
-        local_transform_data.extend(model_mesh_data.transformation_matrices);
+        for i in 0..model_mesh_data.mesh_ids.len() {
+            // TODO: avoid copying the data
+            local_transform_data.extend(model_mesh_data.mesh_transform_buckets[i].clone());
+        }
 
         models.push(g_model);
     }
@@ -115,8 +127,6 @@ fn load_animations(
     }
 }
 
-/// recurse through the root node to get data on transformations, mesh indices, and mesh
-/// instances
 fn find_model_meshes(
     root_node: &gltf::Node,
     base_translation: cgmath::Matrix4<f32>,
@@ -124,28 +134,38 @@ fn find_model_meshes(
 ) -> ModelMeshData {
     let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
     let new_trans = base_translation * cg_trans;
-    'block: {
-        if let Some(mesh) = root_node.mesh() {
-            // this is an instance of a mesh. Push the current base translation
+    if let Some(mesh) = root_node.mesh() {
+        let mut transform_index = 0;
+        'block: {
+            // create the transform
             let local_transform: LocalTransform = LocalTransform {
                 model_index: 0,
                 transform_matrix: new_trans.into(),
             };
-            model_mesh_data
-                .transformation_matrices
-                .push(local_transform);
-            // check mesh_ids to see if this particular mesh has already been added, if so, the index
-            // of the match is equal to the index within mesh_instances that we want to increment by 1
+            // check if this mesh has already been added, if so
+            // add this mesh transform to the end of the bucket at index
             for (idx, m) in model_mesh_data.mesh_ids.iter().enumerate() {
+                transform_index += model_mesh_data.mesh_transform_buckets[idx].len();
+
                 if *m == mesh.index() as u32 {
                     model_mesh_data.mesh_instances[idx] += 1;
+                    model_mesh_data.mesh_transform_buckets[idx].push(local_transform);
                     break 'block;
                 }
             }
-            // this mesh has not been added: append to both vecs
+            // if we get here, then the mesh is totally new
             model_mesh_data.mesh_ids.push(mesh.index() as u32);
             model_mesh_data.mesh_instances.push(1);
+            model_mesh_data
+                .mesh_transform_buckets
+                .push(vec![local_transform]);
+
+            //
         }
+        let unique_kv = model_mesh_data
+            .node_to_lt_index_map
+            .insert(root_node.index(), transform_index);
+        assert!(unique_kv.is_none()); // each node should be unique
     }
     for child_node in root_node.children() {
         model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data);

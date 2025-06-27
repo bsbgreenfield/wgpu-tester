@@ -3,15 +3,12 @@ use std::{collections::HashMap, time::Duration};
 use cgmath::{InnerSpace, Vector3};
 use gltf::{animation::Channel, Node};
 
-use crate::{
-    model::animation::{
-        animation_controller::AnimationInstance,
-        util::{
-            get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
-            IDENTITY, NO_ROTATION, NO_TRANSLATION,
-        },
+use crate::model::animation::{
+    animation_controller::AnimationInstance,
+    util::{
+        get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
+        IDENTITY, NO_ROTATION, NO_TRANSLATION,
     },
-    transforms,
 };
 
 type ModelAnimationMap = HashMap<usize, Vec<AnimationSampler>>;
@@ -93,7 +90,7 @@ impl AnimationNode {
         &self,
         instance: &mut AnimationInstance,
         base_translation: cgmath::Matrix4<f32>,
-        current_mesh_id: &mut usize,
+        node_to_lt_index_map: &HashMap<usize, usize>,
     ) -> bool {
         let mut node_is_done: bool = true;
 
@@ -189,16 +186,15 @@ impl AnimationNode {
         // apply the new transform to the base translation using the optional TRS components
         // assign the mesh transform to the proper slot for this instance
         if self.node_type == NodeType::Mesh {
-            instance.mesh_transforms[*current_mesh_id] = composed_transform
+            instance.mesh_transforms[node_to_lt_index_map[&self.node_id]] = composed_transform
                 .unwrap_or(base_translation * self.transform)
                 .into();
-            *current_mesh_id += 1;
         }
         for child_node in &self.children {
             if !child_node.update_mesh_transforms(
                 instance,
                 composed_transform.unwrap_or(base_translation * self.transform),
-                current_mesh_id,
+                node_to_lt_index_map,
             ) {
                 node_is_done = false;
             }

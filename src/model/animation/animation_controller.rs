@@ -99,10 +99,11 @@ impl SceneAnimationController {
             lt_offsets: Vec::with_capacity(len),
         };
         for (idx, animation_bucket) in self.active_animations.iter_mut().enumerate() {
+            let map = &self.animations[idx].node_to_lt_index_map;
             for animation_instance in animation_bucket.iter_mut() {
                 let offset = animation_instance.model_instance_offset;
                 frame.lt_offsets.push(offset);
-                let (transforms, done) = animation_instance.process_animation_frame(timestamp);
+                let (transforms, done) = animation_instance.process_animation_frame(timestamp, map);
                 frame.transform_slices.push(transforms);
                 if done {
                     self.dead_animations[idx] += 1;
@@ -138,12 +139,20 @@ pub(super) struct AnimationInstance {
 impl AnimationInstance {
     /// given the current timestamp, mutate this instance's mesh transforms,
     /// and return it as a slice
-    fn process_animation_frame(&mut self, timestamp: Duration) -> (&[[[f32; 4]; 4]], bool) {
+    fn process_animation_frame(
+        &mut self,
+        timestamp: Duration,
+        node_to_lt_index_map: &HashMap<usize, usize>,
+    ) -> (&[[[f32; 4]; 4]], bool) {
         self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
         // i dont think its a big problem, but its annoying.
         let node = self.animation_node.clone();
-        let done = node.update_mesh_transforms(self, cgmath::Matrix4::<f32>::identity(), &mut 0);
+        let done = node.update_mesh_transforms(
+            self,
+            cgmath::Matrix4::<f32>::identity(),
+            node_to_lt_index_map,
+        );
         return (&self.mesh_transforms[..], done);
     }
 }
@@ -151,10 +160,16 @@ impl AnimationInstance {
 pub struct SimpleAnimation {
     pub animation_node: Rc<AnimationNode>,
     pub model_id: usize,
+    pub node_to_lt_index_map: HashMap<usize, usize>,
 }
 impl SimpleAnimation {
-    pub fn new(animation_node: AnimationNode, model_id: usize) -> Self {
+    pub fn new(
+        animation_node: AnimationNode,
+        model_id: usize,
+        node_to_lt_index_map: HashMap<usize, usize>,
+    ) -> Self {
         Self {
+            node_to_lt_index_map,
             animation_node: Rc::new(animation_node),
             model_id,
         }

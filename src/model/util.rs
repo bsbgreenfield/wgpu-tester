@@ -1,5 +1,4 @@
-use crate::model::model::{AccessorDataType, GMesh};
-use gltf::accessor::DataType;
+use crate::model::model::GMesh;
 use gltf::Accessor;
 use std::fmt::Debug;
 
@@ -25,64 +24,21 @@ pub enum AttributeType {
     Index,
 }
 
-pub(super) fn get_primitive_data2(
+pub(super) fn get_primitive_data(
     maybe_accessor: Option<&Accessor>,
-    attribute_type: AttributeType,
-) -> Result<(u32, u32), GltfErrors> {
+    _attribute_type: AttributeType,
+) -> Result<Option<(u32, u32)>, GltfErrors> {
     match maybe_accessor {
         Some(accessor) => {
-            let len = accessor.size();
+            let byte_size = accessor.size();
             let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
             let offset = buffer_view.offset() + accessor.offset();
-            return Ok((offset as u32, (accessor.count() * len) as u32));
+            return Ok(Some((offset as u32, (accessor.count() * byte_size) as u32)));
         }
-        None => Ok((0, 0)),
+        None => Ok(None),
     }
 }
 
-pub(super) fn get_primitive_data(
-    accessor: &Accessor,
-    expected_data_type: AccessorDataType,
-) -> Result<(u32, u32), GltfErrors> {
-    match accessor.data_type() {
-        DataType::F32 => {
-            if expected_data_type != AccessorDataType::Vec3F32 {
-                return Err(GltfErrors::VericesError(String::from(
-                    "Data type given is not f32!",
-                )));
-            }
-        }
-        DataType::U16 => {
-            if expected_data_type != AccessorDataType::U16 {
-                return Err(GltfErrors::IndicesError(String::from(
-                    "Data type given is not u16!",
-                )));
-            }
-        }
-        DataType::U8 => {
-            println!("expected {:?}", expected_data_type);
-            println!("actual {:?}", accessor.data_type());
-            if expected_data_type != AccessorDataType::U8 {
-                return Err(GltfErrors::IndicesError(String::from(
-                    "Data type given is not u16!",
-                )));
-            }
-        }
-
-        _ => {
-            println!("{:?}", accessor.data_type());
-            panic!();
-        }
-    }
-    let len = match expected_data_type {
-        AccessorDataType::U8 => accessor.count(),
-        AccessorDataType::U16 => accessor.count() * 2,
-        AccessorDataType::Vec3F32 => accessor.count() * 12,
-    };
-    let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
-    let offset = buffer_view.offset() + accessor.offset();
-    Ok((offset as u32, len as u32))
-}
 pub(super) fn get_model_meshes(
     mesh_ids: &Vec<u32>,
     nodes: &Vec<gltf::Node>,
@@ -95,6 +51,7 @@ pub(super) fn get_model_meshes(
             .unwrap()
             .mesh()
             .unwrap();
+
         let g_mesh = GMesh::new(&mesh)?;
         meshes.push(g_mesh);
     }

@@ -58,6 +58,9 @@ impl GScene {
     pub fn get_camera_buf(&self) -> &wgpu::Buffer {
         &self.camera.as_ref().unwrap().camera_buffer
     }
+    pub fn get_instance_local_offset(&self, instance_idx: usize, model_id: usize) -> (usize, usize) {
+        self.instance_data.get_instance_local_offset(instance_idx, model_id)
+    }
 
     pub fn get_global_buf(&self) -> Result<&wgpu::Buffer, InitializationError> {
         if self.instance_data.global_transform_buffer.is_some() {

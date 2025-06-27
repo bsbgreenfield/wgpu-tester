@@ -1,7 +1,7 @@
 use super::util::GltfErrors;
+use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
 use crate::scene::scene::GScene;
-use crate::{model::primitive::GPrimitive, scene::instances};
 use gltf::Mesh;
 use std::ops::{self, Range};
 
@@ -67,7 +67,7 @@ impl GModel {
         for mesh in self.meshes.iter_mut() {
             for primitive in mesh.primitives.iter_mut() {
                 primitive
-                    .set_primitive_offset(&range_vec)
+                    .set_relative_indices_offset(&range_vec)
                     .expect("set primitive indices offset");
             }
         }

@@ -3,10 +3,7 @@ use std::ops::Range;
 use gltf::Primitive;
 
 use crate::model::{
-    model::AccessorDataType,
-    util::{
-        get_primitive_data, get_primitive_data2, AttributeType, GltfErrors, InitializationError,
-    },
+    util::{get_primitive_data, AttributeType, GltfErrors, InitializationError},
     vertex::ModelVertex,
 };
 
@@ -36,20 +33,19 @@ impl GPrimitive {
             Some(normals) => (normals.0, Some(normals.1)),
             None => (gltf::Semantic::Normals, None),
         };
-
-        primitive
-            .attributes()
-            .find(|a| a.0 == gltf::Semantic::Normals)
-            .unwrap();
-
         let indices_accessor = primitive.indices().unwrap();
 
         let (position_offset, position_length) =
-            get_primitive_data2(Some(&position_accessor), AttributeType::Position)?;
+            get_primitive_data(Some(&position_accessor), AttributeType::Position)?.ok_or(
+                GltfErrors::VericesError(String::from("could not extract position data")),
+            )?;
         let (normal_offset, normal_length) =
-            get_primitive_data2(normals_accessor.as_ref(), AttributeType::Normal)?;
+            get_primitive_data(normals_accessor.as_ref(), AttributeType::Normal)?.unwrap_or((0, 0));
         let (indices_offset, indices_length) =
-            get_primitive_data2(Some(&indices_accessor), AttributeType::Index)?;
+            get_primitive_data(Some(&indices_accessor), AttributeType::Index)?.ok_or(
+                GltfErrors::IndicesError(String::from("could not extract index data")),
+            )?;
+
         Ok(Self {
             position_offset,
             position_length,
@@ -89,7 +85,8 @@ impl GPrimitive {
         }
         index_vec
     }
-    pub(super) fn set_primitive_offset(
+
+    pub(super) fn set_relative_indices_offset(
         &mut self,
         index_ranges: &Vec<Range<usize>>,
     ) -> Result<(), InitializationError> {

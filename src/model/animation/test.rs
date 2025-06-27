@@ -2,20 +2,27 @@
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use crate::model::{
-        animation::animation_controller::{get_scene_animation_data, SceneAnimationController},
-        loader::{self, loader::GltfData},
+    use crate::{
+        model::{
+            animation::animation_controller::{get_scene_animation_data, SceneAnimationController},
+            loader::{self, loader::GltfData},
+        },
+        scene::scene::GSceneData,
     };
 
     #[test]
     fn test_box() {
         let gltf_data: GltfData = loader::loader::GltfLoader::load_gltf("box-animated").unwrap();
+        let g2: GltfData = loader::loader::GltfLoader::load_gltf("box-animated").unwrap();
         let sa = get_scene_animation_data(gltf_data.simple_animations, &gltf_data.binary_data);
         let mut controller: SceneAnimationController = SceneAnimationController::new(sa);
         assert!(controller.animations.len() == 1);
         // validate samplers
 
-        controller.initialize_animation(0, 0);
+        let scene_data = GSceneData::new(g2);
+        let scene = scene_data.build_scene_uninit();
+        let (offset, len) = scene.get_instance_local_offset(0, 1);
+        controller.initialize_animation(0, offset, len);
         assert!(controller.active_animations.len() == 1);
         assert!(controller.active_animations[0][0].time_elapsed == Duration::ZERO);
         println!("{:?}", controller.active_animations[0][0].start_time);
