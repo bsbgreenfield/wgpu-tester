@@ -19,6 +19,26 @@ pub enum InitializationError {
     SceneMergeError(Box<String>),
     SceneInitializationError,
 }
+pub enum AttributeType {
+    Position,
+    Normal,
+    Index,
+}
+
+pub(super) fn get_primitive_data2(
+    maybe_accessor: Option<&Accessor>,
+    attribute_type: AttributeType,
+) -> Result<(u32, u32), GltfErrors> {
+    match maybe_accessor {
+        Some(accessor) => {
+            let len = accessor.size();
+            let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
+            let offset = buffer_view.offset() + accessor.offset();
+            return Ok((offset as u32, (accessor.count() * len) as u32));
+        }
+        None => Ok((0, 0)),
+    }
+}
 
 pub(super) fn get_primitive_data(
     accessor: &Accessor,
@@ -39,9 +59,23 @@ pub(super) fn get_primitive_data(
                 )));
             }
         }
-        _ => panic!("unhandled data type"),
+        DataType::U8 => {
+            println!("expected {:?}", expected_data_type);
+            println!("actual {:?}", accessor.data_type());
+            if expected_data_type != AccessorDataType::U8 {
+                return Err(GltfErrors::IndicesError(String::from(
+                    "Data type given is not u16!",
+                )));
+            }
+        }
+
+        _ => {
+            println!("{:?}", accessor.data_type());
+            panic!();
+        }
     }
     let len = match expected_data_type {
+        AccessorDataType::U8 => accessor.count(),
         AccessorDataType::U16 => accessor.count() * 2,
         AccessorDataType::Vec3F32 => accessor.count() * 12,
     };

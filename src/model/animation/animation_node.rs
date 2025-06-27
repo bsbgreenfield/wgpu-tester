@@ -44,8 +44,8 @@ impl AnimationNode {
         }
     }
     pub(super) fn initialize_sampled_transforms(&self, transforms: &mut Vec<[[f32; 4]; 4]>) {
-        if self.samplers.is_some() {
-            transforms.push(self.transform.clone().into());
+        if self.node_type == NodeType::Mesh {
+            transforms.push(self.transform.into());
         }
         for child in self.children.iter() {
             child.initialize_sampled_transforms(transforms);

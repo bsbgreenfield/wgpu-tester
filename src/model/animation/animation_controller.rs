@@ -53,11 +53,16 @@ impl SceneAnimationController {
         }
     }
 
-    pub fn initialize_animation(&mut self, animation_index: usize, model_instance_offset: usize) {
+    pub fn initialize_animation(
+        &mut self,
+        animation_index: usize,
+        model_instance_offset: usize,
+        model_mesh_instance_count: usize,
+    ) {
         // clone a shared reference to the animation node tree
         let animation_node = self.animations[animation_index].animation_node.clone();
         // get copies of the initial state of the animated nodes
-        let mut mesh_transforms: Vec<[[f32; 4]; 4]> = Vec::new();
+        let mut mesh_transforms: Vec<[[f32; 4]; 4]> = Vec::with_capacity(model_mesh_instance_count);
         let mut sample_map = HashMap::<usize, Option<AnimationSample>>::new();
         let _ = &animation_node.get_default_samples(animation_index, &mut sample_map);
         let _ = &animation_node.initialize_sampled_transforms(&mut mesh_transforms);

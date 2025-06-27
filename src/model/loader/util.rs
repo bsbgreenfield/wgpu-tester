@@ -1,16 +1,20 @@
 use std::{
     fs::{self, ReadDir},
+    ops::Deref,
     path::PathBuf,
 };
 
-use cgmath::SquareMatrix;
+use cgmath::{InnerSpace, Matrix, Matrix4, Quaternion, SquareMatrix, Vector3};
 use gltf::{animation::Channel, Gltf};
 
-use crate::model::{
-    animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
-    loader::loader::GltfFileLoadError,
-    model::{GModel, LocalTransform},
-    util::get_model_meshes,
+use crate::{
+    model::{
+        animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
+        loader::loader::GltfFileLoadError,
+        model::{GModel, LocalTransform},
+        util::get_model_meshes,
+    },
+    transforms::{scale, translation},
 };
 
 struct ModelMeshData {
@@ -27,7 +31,6 @@ impl ModelMeshData {
         }
     }
 }
-
 #[allow(dead_code)]
 pub(super) struct GltfBinaryExtras {
     animation: Option<PathBuf>,
@@ -55,6 +58,9 @@ pub(super) fn load_models_from_gltf<'a>(
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
         let root_node: &gltf::Node<'a> = &nodes[*rid];
+        if root_node.camera().is_some() {
+            continue;
+        }
 
         // get a animation node trees
         let maybe_animation_node = load_animations(&root_node, animations);
@@ -113,17 +119,17 @@ fn load_animations(
 /// instances
 fn find_model_meshes(
     root_node: &gltf::Node,
-    mut base_translation: cgmath::Matrix4<f32>,
+    base_translation: cgmath::Matrix4<f32>,
     mut model_mesh_data: ModelMeshData,
 ) -> ModelMeshData {
+    let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
+    let new_trans = base_translation * cg_trans;
     'block: {
-        let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
-        base_translation = base_translation * cg_trans;
         if let Some(mesh) = root_node.mesh() {
             // this is an instance of a mesh. Push the current base translation
             let local_transform: LocalTransform = LocalTransform {
                 model_index: 0,
-                transform_matrix: base_translation.into(),
+                transform_matrix: new_trans.into(),
             };
             model_mesh_data
                 .transformation_matrices
@@ -142,12 +148,13 @@ fn find_model_meshes(
         }
     }
     for child_node in root_node.children() {
-        model_mesh_data = find_model_meshes(&child_node, base_translation, model_mesh_data);
+        model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data);
     }
     model_mesh_data
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {
+    println!("here");
     let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
     let mesh_node_iter = scene
         .nodes()

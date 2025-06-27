@@ -1,12 +1,13 @@
 use super::util::GltfErrors;
-use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
 use crate::scene::scene::GScene;
+use crate::{model::primitive::GPrimitive, scene::instances};
 use gltf::Mesh;
 use std::ops::{self, Range};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccessorDataType {
+    U8,
     Vec3F32,
     U16,
 }

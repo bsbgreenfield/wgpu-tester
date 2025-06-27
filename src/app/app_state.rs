@@ -3,6 +3,8 @@ use super::util;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
+use cgmath::Matrix4;
+use std::num::NonZero;
 use std::sync::Arc;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
@@ -186,7 +188,7 @@ impl<'a> AppState<'a> {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
         if self.input_controller.key_1_down {
-            self.gscene.initialize_animation(1, 0, 0);
+            self.gscene.initialize_animation(0, 0, 0);
             self.input_controller.key_e_down = false;
         }
         if self.input_controller.key_2_down {
@@ -213,10 +215,27 @@ impl<'a> AppState<'a> {
         let time = std::time::SystemTime::now();
         let timestamp = time.duration_since(std::time::UNIX_EPOCH).unwrap();
         if self.gscene.get_animation_frame(timestamp) {
+            unsafe {
+                self.app_config.queue.write_buffer(
+                    self.gscene
+                        .get_local_transform_buffer()
+                        .as_ref()
+                        .unwrap_unchecked(),
+                    0,
+                    bytemuck::cast_slice(self.gscene.get_local_transform_data()),
+                );
+            }
+        }
+        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.3));
+        self.gscene.update_global_transform_x(0, rot.into());
+        unsafe {
             self.app_config.queue.write_buffer(
-                self.gscene.get_local_transform_buffer().as_ref().unwrap(),
+                self.gscene
+                    .get_global_transform_buffer()
+                    .as_ref()
+                    .unwrap_unchecked(),
                 0,
-                bytemuck::cast_slice(self.gscene.get_local_transform_data()),
+                bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
             );
         }
         Ok(())

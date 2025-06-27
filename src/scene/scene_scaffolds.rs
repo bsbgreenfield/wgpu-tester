@@ -42,6 +42,15 @@ impl<'a> SceneScaffold<'a> {
     }
 }
 
+pub const BUGGY: SceneScaffold = SceneScaffold {
+    file_paths: &["buggy"],
+    global_transform_overrides: &[ScaffoldGTOverride {
+        transform: transforms::scale(0.02),
+        model_idx: 0,
+    }],
+    additional_instances: &[],
+};
+
 pub const CUBE: SceneScaffold = SceneScaffold {
     file_paths: &["box"],
     global_transform_overrides: &[],
@@ -93,5 +102,11 @@ pub const TRUCK_BOX: SceneScaffold = SceneScaffold {
 pub const MONKEY: SceneScaffold = SceneScaffold {
     global_transform_overrides: &[],
     file_paths: &["monkey"],
+    additional_instances: &[],
+};
+
+pub const POLLY: SceneScaffold = SceneScaffold {
+    global_transform_overrides: &[],
+    file_paths: &["polly"],
     additional_instances: &[],
 };

@@ -30,11 +30,11 @@ impl GScene {
         instance_idx: usize,
         animation_index: usize,
     ) {
-        let offset = self
+        let ( offset, len ) = self
             .instance_data
             .get_instance_local_offset(instance_idx, model_id);
         self.animation_controller
-            .initialize_animation(animation_index, offset);
+            .initialize_animation(animation_index, offset, len);
     }
     pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
         let maybe_animation_frame = self.animation_controller.do_animations(timestamp);

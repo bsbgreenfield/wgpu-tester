@@ -4,7 +4,9 @@ use gltf::Primitive;
 
 use crate::model::{
     model::AccessorDataType,
-    util::{get_primitive_data, GltfErrors, InitializationError},
+    util::{
+        get_primitive_data, get_primitive_data2, AttributeType, GltfErrors, InitializationError,
+    },
     vertex::ModelVertex,
 };
 
@@ -27,7 +29,15 @@ impl GPrimitive {
             .find(|a| a.0 == gltf::Semantic::Positions)
             .unwrap();
 
-        let (_, normals_accessor) = primitive
+        let (_, normals_accessor) = match primitive
+            .attributes()
+            .find(|a| a.0 == gltf::Semantic::Normals)
+        {
+            Some(normals) => (normals.0, Some(normals.1)),
+            None => (gltf::Semantic::Normals, None),
+        };
+
+        primitive
             .attributes()
             .find(|a| a.0 == gltf::Semantic::Normals)
             .unwrap();
@@ -35,11 +45,11 @@ impl GPrimitive {
         let indices_accessor = primitive.indices().unwrap();
 
         let (position_offset, position_length) =
-            get_primitive_data(&position_accessor, AccessorDataType::Vec3F32)?;
+            get_primitive_data2(Some(&position_accessor), AttributeType::Position)?;
         let (normal_offset, normal_length) =
-            get_primitive_data(&normals_accessor, AccessorDataType::Vec3F32)?;
+            get_primitive_data2(normals_accessor.as_ref(), AttributeType::Normal)?;
         let (indices_offset, indices_length) =
-            get_primitive_data(&indices_accessor, AccessorDataType::U16)?;
+            get_primitive_data2(Some(&indices_accessor), AttributeType::Index)?;
         Ok(Self {
             position_offset,
             position_length,
@@ -54,9 +64,9 @@ impl GPrimitive {
     pub(super) fn get_vertex_data(&self, main_buffer_data: &Vec<u8>) -> Vec<ModelVertex> {
         let position_bytes = &main_buffer_data
             [self.position_offset as usize..(self.position_offset + self.position_length) as usize];
+        let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
         let normal_bytes = &main_buffer_data
             [self.normal_offset as usize..(self.normal_offset + self.normal_length) as usize];
-        let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
         let normals_f32: &[f32] = bytemuck::cast_slice(normal_bytes);
         assert_eq!(normals_f32.len(), position_f32.len());
         let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))

@@ -1,5 +1,5 @@
 use crate::{
-    model::{animation::animation_controller::AnimationFrame, model::GModel},
+    model::{self, animation::animation_controller::AnimationFrame, model::GModel},
     scene::{scene_scaffolds::SceneScaffold, util::calculate_model_mesh_offsets},
     transforms,
 };
@@ -27,13 +27,20 @@ pub(super) struct InstanceData {
 }
 
 impl InstanceData {
-    pub fn get_instance_local_offset(&self, instance_idx: usize, model_idx: usize) -> usize {
+    pub fn get_instance_local_offset(
+        &self,
+        instance_idx: usize,
+        model_idx: usize,
+    ) -> (usize, usize) {
         // the location of the first instance of this model in the local transform buffer
         let model_local_offset = self.model_instances_local_offsets[model_idx];
         let model_mesh_count = (self.model_instances_local_offsets[model_idx + 1]
             - model_local_offset)
             / self.model_instances[model_idx];
-        return model_local_offset + (instance_idx * model_mesh_count);
+        return (
+            model_local_offset + (instance_idx * model_mesh_count),
+            model_mesh_count,
+        );
     }
 
     /// unsafe function
@@ -123,6 +130,7 @@ impl InstanceData {
         model_mesh_counts.iter().for_each(|mesh_count| {
             model_instances_local_offsets.push(*mesh_count);
         });
+
         let mut instance_data = Self {
             model_instances,
             local_transform_buffer: None,

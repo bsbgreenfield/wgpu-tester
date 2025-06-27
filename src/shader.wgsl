@@ -13,7 +13,7 @@ struct InstanceInput {
 
 
 struct GlobalTransforms{
-	transforms: array<mat4x4<f32>>,
+transforms: array<mat4x4<f32>>,
 }
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
@@ -42,7 +42,7 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
 
 	let global_t_matrix = global_transforms.transforms[instance.model_index];
     var out: VertexOutput;
-    out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix * vec4<f32>(obj.position, 1.0);
+    out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  * vec4<f32>(obj.position, 1.0);
 
     var color: vec3<f32> = vec3<f32>(0.5, 0.2, 0.7);
 	out.color = color; 
