@@ -3,8 +3,6 @@ use super::util;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
-use cgmath::Matrix4;
-use std::num::NonZero;
 use std::sync::Arc;
 use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;

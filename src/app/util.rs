@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 
+#[allow(unused_imports)]
 use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FOX, MONKEY, POLLY};
 #[allow(unused_imports)]
 use crate::{
@@ -15,6 +16,7 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         ..Default::default()
     });
+
     let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
     let adapter = instance
@@ -69,7 +71,5 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    BOX_ANIMATED
-        .create(&app_config.device, aspect_ratio)
-        .unwrap()
+    TRUCK.create(&app_config.device, aspect_ratio).unwrap()
 }
