@@ -61,7 +61,10 @@ pub const CUBE: SceneScaffold = SceneScaffold {
     }],
 };
 pub const FOX: SceneScaffold = SceneScaffold {
-    global_transform_overrides: &[],
+    global_transform_overrides: &[ScaffoldGTOverride {
+        model_idx: 0,
+        transform: transforms::scale(0.05),
+    }],
     file_paths: &["fox"],
     additional_instances: &[],
 };

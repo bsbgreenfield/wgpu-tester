@@ -285,10 +285,12 @@ impl<'a> AppState<'a> {
                 0,
                 self.gscene.get_vertex_buffer().as_ref().unwrap().slice(..),
             );
-            render_pass.set_index_buffer(
-                self.gscene.get_index_buffer().as_ref().unwrap().slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
+            if self.gscene.get_index_buffer().as_ref().unwrap().size() > 0 {
+                render_pass.set_index_buffer(
+                    self.gscene.get_index_buffer().as_ref().unwrap().slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+            }
             render_pass.set_vertex_buffer(
                 1,
                 self.gscene

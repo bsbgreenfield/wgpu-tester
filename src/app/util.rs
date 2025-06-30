@@ -29,15 +29,13 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
         .unwrap();
 
     let (device, queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: Default::default(),
-            },
-            None,
-        )
+        .request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: Default::default(),
+            trace: wgpu::Trace::Off,
+        })
         .await
         .unwrap();
 
@@ -71,5 +69,5 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    TRUCK.create(&app_config.device, aspect_ratio).unwrap()
+    FOX.create(&app_config.device, aspect_ratio).unwrap()
 }

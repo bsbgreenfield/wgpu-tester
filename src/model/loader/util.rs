@@ -174,7 +174,6 @@ fn find_model_meshes(
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {
-    println!("here");
     let scene = gltf.scenes().next().ok_or(gltf::Error::UnsupportedScheme)?;
     let mesh_node_iter = scene
         .nodes()

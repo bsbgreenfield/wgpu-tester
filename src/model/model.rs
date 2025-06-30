@@ -103,12 +103,20 @@ impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
     fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>) {
         for primitive in mesh.primitives.iter() {
             let (indices_offset, indices_length) = primitive.initialized_index_offset_len.unwrap();
-            let (vertices_offset, _) = primitive.initialized_vertex_offset_len.unwrap();
-            self.draw_indexed(
-                indices_offset..(indices_length + indices_offset),
-                vertices_offset as i32,
-                instances.clone(),
-            );
+            let (vertices_offset, vertices_length) =
+                primitive.initialized_vertex_offset_len.unwrap();
+            if indices_length > 0 {
+                self.draw_indexed(
+                    indices_offset..(indices_length + indices_offset),
+                    vertices_offset as i32,
+                    instances.clone(),
+                );
+            } else {
+                self.draw(
+                    vertices_offset..(vertices_offset + vertices_length),
+                    instances.clone(),
+                );
+            }
         }
     }
     fn draw_gmodel(

@@ -33,7 +33,7 @@ impl GPrimitive {
             Some(normals) => (normals.0, Some(normals.1)),
             None => (gltf::Semantic::Normals, None),
         };
-        let indices_accessor = primitive.indices().unwrap();
+        let indices_accessor = primitive.indices();
 
         let (position_offset, position_length) =
             get_primitive_data(Some(&position_accessor), AttributeType::Position)?.ok_or(
@@ -42,10 +42,7 @@ impl GPrimitive {
         let (normal_offset, normal_length) =
             get_primitive_data(normals_accessor.as_ref(), AttributeType::Normal)?.unwrap_or((0, 0));
         let (indices_offset, indices_length) =
-            get_primitive_data(Some(&indices_accessor), AttributeType::Index)?.ok_or(
-                GltfErrors::IndicesError(String::from("could not extract index data")),
-            )?;
-
+            get_primitive_data(indices_accessor.as_ref(), AttributeType::Index)?.unwrap_or((0, 0));
         Ok(Self {
             position_offset,
             position_length,
@@ -61,6 +58,12 @@ impl GPrimitive {
         let position_bytes = &main_buffer_data
             [self.position_offset as usize..(self.position_offset + self.position_length) as usize];
         let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
+        if self.normal_length == 0 {
+            let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
+                .map(|i| ModelVertex::new(position_f32[i * 3..i * 3 + 3].try_into().unwrap()))
+                .collect();
+            return vertex_vec;
+        }
         let normal_bytes = &main_buffer_data
             [self.normal_offset as usize..(self.normal_offset + self.normal_length) as usize];
         let normals_f32: &[f32] = bytemuck::cast_slice(normal_bytes);
