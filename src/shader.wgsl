@@ -1,6 +1,7 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
+  @location(2) tex_coords: vec2<f32>,
 }
 
 struct InstanceInput {
@@ -29,6 +30,11 @@ var<uniform> camera_uniform: CameraUniform;
 
 @group(1) @binding(1)
 var<storage, read> global_transforms: GlobalTransforms;
+
+@group(2) @binding(0)
+var t_diffuse: texture_2d<f32>;
+@group(2) @binding(1)
+var s_diffuse: sampler;
 
 
 @vertex

@@ -1,9 +1,11 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
 use crate::model::animation::animation_controller::SceneAnimationController;
 use crate::model::animation::animation_controller::SimpleAnimation;
 use crate::model::loader::loader::GltfData;
+use crate::model::materials::material::MaterialDefinition;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
@@ -16,6 +18,7 @@ use super::instances::InstanceData;
 
 pub struct GScene {
     pub models: Vec<GModel>,
+    pub material_definitions: Vec<MaterialDefinition>,
     vertex_data: VertexData,
     index_data: IndexData,
     pub(super) instance_data: InstanceData,
@@ -143,6 +146,7 @@ pub struct GSceneData {
     pub models: Vec<GModel>,
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
+    material_definitions: Vec<MaterialDefinition>,
     local_transforms: Vec<LocalTransform>,
     simple_animations: Vec<SimpleAnimation>,
 }
@@ -168,6 +172,7 @@ impl GSceneData {
         let mut scene = GScene {
             animation_controller,
             models: self.models,
+            material_definitions: self.material_definitions,
             vertex_data,
             instance_data,
             index_data,
@@ -184,6 +189,7 @@ impl GSceneData {
 
         GScene {
             models: self.models,
+            material_definitions: self.material_definitions,
             vertex_data,
             instance_data,
             index_data,
@@ -204,6 +210,7 @@ impl GSceneData {
 
         Self {
             models: gltf_data.models,
+            material_definitions: gltf_data.material_definitions,
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,

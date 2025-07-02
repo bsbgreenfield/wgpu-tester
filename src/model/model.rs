@@ -1,21 +1,9 @@
 use super::util::GltfErrors;
-use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
+use crate::model::{materials::material::GMaterial, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
 use std::ops::{self, Range};
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum AccessorDataType {
-    U8,
-    Vec3F32,
-    U16,
-}
-
-// Maybe this entire folder should be moved inside of scene
-// its annoying that these three functions are left as pub just
-// so that scene can access them, but I may want to work with
-// modesls independently later
 pub struct GModel {
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,

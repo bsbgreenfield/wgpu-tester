@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, ReadDir},
+    ops::Deref,
     path::PathBuf,
 };
 
@@ -10,6 +11,7 @@ use gltf::{animation::Channel, Gltf};
 use crate::model::{
     animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
     loader::loader::GltfFileLoadError,
+    materials::material::{GMaterial, MaterialDefinition},
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
@@ -19,6 +21,7 @@ struct ModelMeshData {
     mesh_instances: Vec<u32>,
     mesh_transform_buckets: Vec<Vec<LocalTransform>>,
     node_to_lt_index_map: HashMap<usize, usize>,
+    materials: Vec<GMaterial>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -27,6 +30,7 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             mesh_transform_buckets: Vec::new(),
+            materials: Vec::new(),
         }
     }
 }
@@ -80,7 +84,6 @@ pub(super) fn load_models_from_gltf<'a>(
                 model_mesh_data.node_to_lt_index_map,
             ));
         }
-
         // instantiate meshes, instantiate model
         let meshes =
             get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
@@ -92,6 +95,7 @@ pub(super) fn load_models_from_gltf<'a>(
             model_mesh_data.mesh_transform_buckets.len(),
             model_mesh_data.mesh_ids.len()
         );
+
         // add the local transformations to the running vec
         for i in 0..model_mesh_data.mesh_ids.len() {
             // TODO: avoid copying the data
@@ -159,9 +163,11 @@ fn find_model_meshes(
             model_mesh_data
                 .mesh_transform_buckets
                 .push(vec![local_transform]);
-
-            //
+            for primitive in mesh.primitives() {
+                let m = primitive.material();
+            }
         }
+
         let unique_kv = model_mesh_data
             .node_to_lt_index_map
             .insert(root_node.index(), transform_index);
@@ -171,6 +177,25 @@ fn find_model_meshes(
         model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data);
     }
     model_mesh_data
+}
+pub(super) fn get_material_definitions(
+    nodes: gltf::iter::Nodes,
+    root_nodes_ids: Vec<usize>,
+    device: &wgpu::Device,
+) -> Vec<MaterialDefinition> {
+    let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
+    let mut materials: Vec<MaterialDefinition> = Vec::new();
+    for root_node in root_nodes_ids.iter() {
+        let rid = *root_node;
+        let root_node = nodes[rid].clone();
+        if let Some(mesh) = root_node.mesh() {
+            for primitive in mesh.primitives() {
+                let material_def: MaterialDefinition =
+                    MaterialDefinition::new(&primitive.material());
+            }
+        }
+    }
+    materials
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

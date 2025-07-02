@@ -9,6 +9,8 @@ use crate::model::{
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GPrimitive {
+    tex_coords_offset: u32,
+    tex_coords_length: u32,
     position_offset: u32,
     position_length: u32,
     normal_offset: u32,
@@ -35,6 +37,18 @@ impl GPrimitive {
         };
         let indices_accessor = primitive.indices();
 
+        let (_, tex_accessor) = match primitive.attributes().find(|att| {
+            if let gltf::Semantic::TexCoords(tc) = att.0 {
+                assert_eq!(tc, 0);
+                return true;
+            } else {
+                false
+            }
+        }) {
+            Some(tex_coords) => (tex_coords.0, Some(tex_coords.1)),
+            None => (gltf::Semantic::TexCoords(0), None),
+        };
+
         let (position_offset, position_length) =
             get_primitive_data(Some(&position_accessor), AttributeType::Position)?.ok_or(
                 GltfErrors::VericesError(String::from("could not extract position data")),
@@ -43,7 +57,12 @@ impl GPrimitive {
             get_primitive_data(normals_accessor.as_ref(), AttributeType::Normal)?.unwrap_or((0, 0));
         let (indices_offset, indices_length) =
             get_primitive_data(indices_accessor.as_ref(), AttributeType::Index)?.unwrap_or((0, 0));
+        let (tex_coords_offset, tex_coords_length) =
+            get_primitive_data(tex_accessor.as_ref(), AttributeType::TexCoords)?.unwrap_or((0, 0));
+
         Ok(Self {
+            tex_coords_offset,
+            tex_coords_length,
             position_offset,
             position_length,
             normal_offset,
@@ -54,24 +73,52 @@ impl GPrimitive {
             initialized_index_offset_len: None,
         })
     }
+
+    fn get_texture_bind_group(primitive: &Primitive) -> wgpu::BindGroup {
+        match primitive
+            .material()
+            .pbr_metallic_roughness()
+            .base_color_texture()
+        {
+            Some(base_color_texture) => {
+                todo!();
+            }
+            None => todo!(),
+        }
+    }
+
     pub(super) fn get_vertex_data(&self, main_buffer_data: &Vec<u8>) -> Vec<ModelVertex> {
         let position_bytes = &main_buffer_data
             [self.position_offset as usize..(self.position_offset + self.position_length) as usize];
         let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
-        if self.normal_length == 0 {
-            let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
-                .map(|i| ModelVertex::new(position_f32[i * 3..i * 3 + 3].try_into().unwrap()))
-                .collect();
-            return vertex_vec;
+
+        let mut normals_f32: Option<&[f32]> = None;
+        let mut tex_coords_f32: Option<&[f32]> = None;
+
+        if self.normal_length > 0 {
+            let normal_bytes = &main_buffer_data
+                [self.normal_offset as usize..(self.normal_offset + self.normal_length) as usize];
+            normals_f32 = Some(bytemuck::cast_slice(normal_bytes));
         }
-        let normal_bytes = &main_buffer_data
-            [self.normal_offset as usize..(self.normal_offset + self.normal_length) as usize];
-        let normals_f32: &[f32] = bytemuck::cast_slice(normal_bytes);
-        assert_eq!(normals_f32.len(), position_f32.len());
+        if self.tex_coords_length > 0 {
+            let tex_bytes = &main_buffer_data[self.tex_coords_offset as usize
+                ..(self.tex_coords_offset + self.tex_coords_length) as usize];
+            tex_coords_f32 = Some(bytemuck::cast_slice(tex_bytes));
+        }
+        println!("NORMAL {:?} {:?}", self.normal_length, normals_f32);
+        // we may have to pad the vertex with dummy data for normals and or tex coords if they are
+        // missing
         let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
             .map(|i| ModelVertex {
+                tex_coords: match tex_coords_f32 {
+                    Some(coords) => coords[i * 2..i * 2 + 2].try_into().unwrap(),
+                    None => [0.0, 0.0],
+                },
                 position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
-                normal: normals_f32[i * 3..i * 3 + 3].try_into().unwrap(),
+                normal: match normals_f32 {
+                    Some(n) => n[i * 3..i * 3 + 3].try_into().unwrap(),
+                    None => [0.0, 0.0, 0.0],
+                },
             })
             .collect();
         vertex_vec

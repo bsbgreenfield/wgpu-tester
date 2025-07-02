@@ -1,5 +1,7 @@
 use super::app_config::AppConfig;
 use super::util;
+use crate::app;
+use crate::model::materials::material::GMaterial;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
@@ -41,6 +43,7 @@ pub struct AppState<'a> {
     pub gscene: GScene,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
+    pub materials: Vec<GMaterial>,
 }
 
 impl<'a> AppState<'a> {
@@ -53,12 +56,14 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
+        let sampler_texture_bgl = AppState::create_diffuse_bgl(&app_config);
         let gscene = util::get_scene(&app_config, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
         let (global_instance_bind_group_layout, global_instance_bind_group) =
             AppState::setup_global_instance_bind_group(&app_config, &gscene);
         let bind_groups = vec![camera_bind_group, global_instance_bind_group];
+
         let render_pipeline_layout =
             app_config
                 .device
@@ -67,6 +72,7 @@ impl<'a> AppState<'a> {
                     bind_group_layouts: &[
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
+                        &sampler_texture_bgl,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -88,16 +94,8 @@ impl<'a> AppState<'a> {
                         targets: &[Some(wgpu::ColorTargetState {
                             format: app_config.config.format,
                             blend: Some(wgpu::BlendState {
-                                color: wgpu::BlendComponent {
-                                    src_factor: wgpu::BlendFactor::One,
-                                    dst_factor: wgpu::BlendFactor::Zero,
-                                    operation: wgpu::BlendOperation::Min,
-                                },
-                                alpha: wgpu::BlendComponent {
-                                    src_factor: wgpu::BlendFactor::One,
-                                    dst_factor: wgpu::BlendFactor::One,
-                                    operation: wgpu::BlendOperation::Add,
-                                },
+                                color: wgpu::BlendComponent::REPLACE,
+                                alpha: wgpu::BlendComponent::REPLACE,
                             }),
                             write_mask: wgpu::ColorWrites::all(),
                         })],
@@ -129,6 +127,32 @@ impl<'a> AppState<'a> {
             bind_groups,
             input_controller: InputController::new(),
         }
+    }
+
+    fn create_diffuse_bgl(app_config: &AppConfig) -> wgpu::BindGroupLayout {
+        app_config
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("diffuse bind group layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            })
     }
 
     fn setup_global_instance_bind_group(

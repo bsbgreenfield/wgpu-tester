@@ -22,6 +22,7 @@ pub enum AttributeType {
     Position,
     Normal,
     Index,
+    TexCoords,
 }
 
 pub(super) fn get_primitive_data(
