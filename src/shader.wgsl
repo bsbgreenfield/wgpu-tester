@@ -18,7 +18,7 @@ transforms: array<mat4x4<f32>>,
 }
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
-  @location(0) color: vec3<f32>,
+  @location(0) tex_coords: vec2<f32>,
 }
 
 struct CameraUniform {
@@ -49,13 +49,11 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
 	let global_t_matrix = global_transforms.transforms[instance.model_index];
     var out: VertexOutput;
     out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  * vec4<f32>(obj.position, 1.0);
-
-    var color: vec3<f32> = vec3<f32>(0.5, 0.2, 0.7);
-	out.color = color; 
+	out.tex_coords = obj.tex_coords;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+	return textureSample(t_diffuse, s_diffuse, in.tex_coords);
 }

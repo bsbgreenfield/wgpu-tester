@@ -40,7 +40,7 @@ pub enum UpdateResult {
 pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    pub gscene: GScene,
+    pub gscene: GScene<'a>,
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
     pub materials: Vec<GMaterial>,
@@ -57,7 +57,7 @@ impl<'a> AppState<'a> {
             });
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
         let sampler_texture_bgl = AppState::create_diffuse_bgl(&app_config);
-        let gscene = util::get_scene(&app_config, aspect_ratio);
+        let mut gscene = util::get_scene(&app_config.device, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
         let (global_instance_bind_group_layout, global_instance_bind_group) =
@@ -119,8 +119,19 @@ impl<'a> AppState<'a> {
                         conservative: false,
                     },
                 });
-
+        let mut materials = Vec::<GMaterial>::new();
+        for m_def in gscene.material_definitions.iter_mut() {
+            materials.push(GMaterial::from_material_definition_with_bgl(
+                m_def,
+                &app_config.device,
+                &sampler_texture_bgl,
+            ));
+        }
+        for material in materials.iter() {
+            material.write_texture_2d(&app_config.queue);
+        }
         Self {
+            materials,
             app_config,
             render_pipeline,
             gscene,
@@ -301,6 +312,9 @@ impl<'a> AppState<'a> {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
+            for material in self.materials.iter() {
+                render_pass.set_bind_group(2, &material.texture.bind_group, &[]);
+            }
             render_pass.set_pipeline(&self.render_pipeline);
             //if self.scene.draw_scene(&mut render_pass).is_err() {
             //    panic!("error");

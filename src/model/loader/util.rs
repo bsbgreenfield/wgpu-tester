@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fs::{self, ReadDir},
-    ops::Deref,
     path::PathBuf,
 };
 
@@ -11,7 +10,7 @@ use gltf::{animation::Channel, Gltf};
 use crate::model::{
     animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
     loader::loader::GltfFileLoadError,
-    materials::material::{GMaterial, MaterialDefinition},
+    materials::material::MaterialDefinition,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
@@ -21,7 +20,6 @@ struct ModelMeshData {
     mesh_instances: Vec<u32>,
     mesh_transform_buckets: Vec<Vec<LocalTransform>>,
     node_to_lt_index_map: HashMap<usize, usize>,
-    materials: Vec<GMaterial>,
 }
 impl ModelMeshData {
     fn new() -> Self {
@@ -30,7 +28,6 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             mesh_transform_buckets: Vec::new(),
-            materials: Vec::new(),
         }
     }
 }
@@ -163,9 +160,6 @@ fn find_model_meshes(
             model_mesh_data
                 .mesh_transform_buckets
                 .push(vec![local_transform]);
-            for primitive in mesh.primitives() {
-                let m = primitive.material();
-            }
         }
 
         let unique_kv = model_mesh_data
@@ -178,24 +172,25 @@ fn find_model_meshes(
     }
     model_mesh_data
 }
-pub(super) fn get_material_definitions(
+pub(super) fn get_material_definitions<'a>(
     nodes: gltf::iter::Nodes,
-    root_nodes_ids: Vec<usize>,
-    device: &wgpu::Device,
-) -> Vec<MaterialDefinition> {
+    root_nodes_ids: &Vec<usize>,
+    main_buffer_data: &Vec<u8>,
+) -> Vec<MaterialDefinition<'a>> {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
-    let mut materials: Vec<MaterialDefinition> = Vec::new();
+    let mut material_defs: Vec<MaterialDefinition> = Vec::new();
     for root_node in root_nodes_ids.iter() {
         let rid = *root_node;
         let root_node = nodes[rid].clone();
         if let Some(mesh) = root_node.mesh() {
             for primitive in mesh.primitives() {
                 let material_def: MaterialDefinition =
-                    MaterialDefinition::new(&primitive.material());
+                    MaterialDefinition::new(&primitive.material(), main_buffer_data);
+                material_defs.push(material_def);
             }
         }
     }
-    materials
+    material_defs
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

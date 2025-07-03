@@ -7,15 +7,6 @@ pub struct ModelVertex {
     pub normal: [f32; 3],
     pub tex_coords: [f32; 2],
 }
-impl ModelVertex {
-    pub const fn new(position: &[f32; 3]) -> Self {
-        Self {
-            position: *position,
-            normal: [0.0, 0.0, 0.0],
-            tex_coords: [0f32, 0f32],
-        }
-    }
-}
 
 pub trait Vertex {
     fn desc() -> VertexBufferLayout<'static>;
@@ -39,7 +30,7 @@ impl Vertex for ModelVertex {
                     format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x2,
                 },

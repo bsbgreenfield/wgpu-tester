@@ -1,32 +1,31 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
+
+use gltf::buffer::View;
+
+pub(super) fn get_image_bytes_from_view(view: &View, main_buffer_data: &Vec<u8>) -> Vec<u8> {
+    main_buffer_data[view.offset()..view.offset() + view.length()].to_vec()
+}
 
 pub(super) fn find_texure_file(uri: &str) -> Result<PathBuf, std::io::Error> {
     let res_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("res")
         .join(uri);
 
+    println!("{res_dir:?}");
     if !res_dir.exists() {
         eprintln!("res directory does not exist: {:?}", res_dir);
         return Err(std::io::ErrorKind::NotFound.into());
+    } else {
+        return Ok(res_dir);
     }
-
-    let entries = fs::read_dir(&res_dir)?;
-
-    for entry in entries {
-        if let Ok(entry) = entry {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name == uri {
-                        return Ok(path);
-                    }
-                }
-            }
-        }
-    }
-
-    Err(std::io::ErrorKind::NotFound.into())
 }
+
+pub(super) fn get_image_from_path(path: &PathBuf) -> Result<image::DynamicImage, std::io::Error> {
+    let bytes = std::fs::read(path)?;
+    let diffuse_image = image::load_from_memory(&bytes).unwrap();
+    Ok(diffuse_image)
+}
+
 pub(super) fn address_mode_from_gltf(wrap_mode: gltf::texture::WrappingMode) -> wgpu::AddressMode {
     match wrap_mode {
         gltf::texture::WrappingMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,

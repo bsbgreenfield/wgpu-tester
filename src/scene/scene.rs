@@ -16,9 +16,9 @@ use super::camera::Camera;
 use super::camera::{get_camera_bind_group, get_camera_default};
 use super::instances::InstanceData;
 
-pub struct GScene {
+pub struct GScene<'a> {
     pub models: Vec<GModel>,
-    pub material_definitions: Vec<MaterialDefinition>,
+    pub material_definitions: Vec<MaterialDefinition<'a>>,
     vertex_data: VertexData,
     index_data: IndexData,
     pub(super) instance_data: InstanceData,
@@ -26,7 +26,7 @@ pub struct GScene {
     animation_controller: SceneAnimationController,
 }
 
-impl GScene {
+impl<'a> GScene<'a> {
     pub fn initialize_animation(
         &mut self,
         model_id: usize,
@@ -142,17 +142,17 @@ impl GScene {
 }
 
 /// an uninitialized scene
-pub struct GSceneData {
+pub struct GSceneData<'a> {
     pub models: Vec<GModel>,
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
-    material_definitions: Vec<MaterialDefinition>,
+    material_definitions: Vec<MaterialDefinition<'a>>,
     local_transforms: Vec<LocalTransform>,
     simple_animations: Vec<SimpleAnimation>,
 }
 
-impl GSceneData {
-    pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene {
+impl<'a> GSceneData<'a> {
+    pub fn build_scene_init(self, device: &'a wgpu::Device, aspect_ratio: f32) -> GScene {
         let mut scene = self.build_scene_uninit();
         scene.init(device, aspect_ratio);
         scene
@@ -163,7 +163,7 @@ impl GSceneData {
         device: &wgpu::Device,
         aspect_ratio: f32,
         scaffold: &SceneScaffold,
-    ) -> Result<GScene, InitializationError> {
+    ) -> Result<GScene<'a>, InitializationError> {
         let instance_data =
             InstanceData::from_scaffold(scaffold, self.local_transforms, &self.models)?;
         let vertex_data = VertexData::from_data(self.vertex_vec);
@@ -181,7 +181,7 @@ impl GSceneData {
         scene.init(device, aspect_ratio);
         return Ok(scene);
     }
-    pub fn build_scene_uninit(self) -> GScene {
+    pub fn build_scene_uninit(self) -> GScene<'a> {
         let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
@@ -198,7 +198,7 @@ impl GSceneData {
         }
     }
 
-    pub fn new(mut gltf_data: GltfData) -> Self {
+    pub fn new(mut gltf_data: GltfData<'a>) -> Self {
         // build out vertex and index data from the models, meshes, and primitives by referencing
         // the main blob
         let vertex_vec =

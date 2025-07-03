@@ -1,6 +1,6 @@
 use super::util::GltfErrors;
+use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
-use crate::model::{materials::material::GMaterial, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
 use std::ops::{self, Range};

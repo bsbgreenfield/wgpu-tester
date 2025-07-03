@@ -74,19 +74,6 @@ impl GPrimitive {
         })
     }
 
-    fn get_texture_bind_group(primitive: &Primitive) -> wgpu::BindGroup {
-        match primitive
-            .material()
-            .pbr_metallic_roughness()
-            .base_color_texture()
-        {
-            Some(base_color_texture) => {
-                todo!();
-            }
-            None => todo!(),
-        }
-    }
-
     pub(super) fn get_vertex_data(&self, main_buffer_data: &Vec<u8>) -> Vec<ModelVertex> {
         let position_bytes = &main_buffer_data
             [self.position_offset as usize..(self.position_offset + self.position_length) as usize];
@@ -105,7 +92,6 @@ impl GPrimitive {
                 ..(self.tex_coords_offset + self.tex_coords_length) as usize];
             tex_coords_f32 = Some(bytemuck::cast_slice(tex_bytes));
         }
-        println!("NORMAL {:?} {:?}", self.normal_length, normals_f32);
         // we may have to pad the vertex with dummy data for normals and or tex coords if they are
         // missing
         let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
