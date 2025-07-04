@@ -1,7 +1,7 @@
 use super::app_config::AppConfig;
 use super::util;
-use crate::app;
 use crate::model::materials::material::GMaterial;
+use crate::model::materials::texture::GTexture;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
@@ -44,6 +44,7 @@ pub struct AppState<'a> {
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
     pub materials: Vec<GMaterial>,
+    depth_texture: GTexture,
 }
 
 impl<'a> AppState<'a> {
@@ -101,7 +102,13 @@ impl<'a> AppState<'a> {
                         })],
                         compilation_options: Default::default(),
                     }),
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
                     cache: None,
                     multiview: None,
                     multisample: wgpu::MultisampleState {
@@ -130,11 +137,14 @@ impl<'a> AppState<'a> {
         for material in materials.iter() {
             material.write_texture_2d(&app_config.queue);
         }
+
+        let depth_texture = GTexture::create_depth_texture(&app_config.device, &app_config.config);
         Self {
             materials,
             app_config,
             render_pipeline,
             gscene,
+            depth_texture,
             bind_groups,
             input_controller: InputController::new(),
         }
@@ -302,7 +312,14 @@ impl<'a> AppState<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -349,5 +366,7 @@ impl<'a> AppState<'a> {
 
     pub(super) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.app_config.resize(new_size);
+        self.depth_texture =
+            GTexture::create_depth_texture(&self.app_config.device, &self.app_config.config);
     }
 }

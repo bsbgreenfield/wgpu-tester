@@ -39,6 +39,8 @@ impl<'a> MaterialDefinition<'a> {
             Some(tex) => {
                 let sampler = tex.texture().sampler();
                 let min_filter = min_filter_from_gltf(sampler.min_filter());
+                let mag_filter = mag_filter_from_gltf(sampler.mag_filter());
+                println!("min: {:?}, mag: {:?}  ", min_filter.0, mag_filter);
                 wgpu::SamplerDescriptor {
                     label: None,
                     address_mode_u: address_mode_from_gltf(sampler.wrap_s()),
