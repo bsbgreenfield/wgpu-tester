@@ -36,6 +36,9 @@ var t_diffuse: texture_2d<f32>;
 @group(2) @binding(1)
 var s_diffuse: sampler;
 
+@group(3)@binding(0)
+var<uniform> base_color_factors: vec4<f32>;
+
 
 @vertex
 fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -55,5 +58,6 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	return textureSample(t_diffuse, s_diffuse, in.tex_coords);
+	let colors: vec4<f32> =  textureSample(t_diffuse, s_diffuse, in.tex_coords);
+	return vec4<f32>(colors[0] * base_color_factors[0], colors[1] * base_color_factors[1], colors[2] * base_color_factors[2], colors[3] * base_color_factors[3]);
 }

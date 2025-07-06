@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{num::NonZero, path::PathBuf};
 
 use image::GenericImageView;
-use wgpu::{Extent3d, FilterMode, TextureUsages};
+use wgpu::{BindingResource, BufferBinding, Extent3d, FilterMode, TextureUsages};
 
 use crate::model::materials::{
     texture::GTexture,
@@ -15,7 +15,7 @@ use crate::model::materials::{
 pub struct MaterialDefinition<'a> {
     pub image_source: Option<PathBuf>,
     buffer_bytes: Option<Vec<u8>>,
-    base_color_factors: [f32; 4],
+    pub base_color_factors: [f32; 4],
     texture_descriptor: wgpu::TextureDescriptor<'a>,
     sampler_descripor: wgpu::SamplerDescriptor<'a>,
     view_descriptor: wgpu::TextureViewDescriptor<'a>,
@@ -39,8 +39,6 @@ impl<'a> MaterialDefinition<'a> {
             Some(tex) => {
                 let sampler = tex.texture().sampler();
                 let min_filter = min_filter_from_gltf(sampler.min_filter());
-                let mag_filter = mag_filter_from_gltf(sampler.mag_filter());
-                println!("min: {:?}, mag: {:?}  ", min_filter.0, mag_filter);
                 wgpu::SamplerDescriptor {
                     label: None,
                     address_mode_u: address_mode_from_gltf(sampler.wrap_s()),
@@ -78,7 +76,7 @@ impl<'a> MaterialDefinition<'a> {
                 }
             }
         }
-        let base_colors = material.pbr_metallic_roughness().base_color_factor();
+
         let m = MaterialDefinition {
             image_source: image_path,
             buffer_bytes: image_bytes,
@@ -95,7 +93,7 @@ impl<'a> MaterialDefinition<'a> {
                 usage: Some(TextureUsages::TEXTURE_BINDING),
                 aspect: wgpu::TextureAspect::All,
             },
-            base_color_factors: base_colors,
+            base_color_factors: material.pbr_metallic_roughness().base_color_factor(),
         };
         m
     }
@@ -103,6 +101,7 @@ impl<'a> MaterialDefinition<'a> {
 
 pub struct GMaterial {
     pub texture: GTexture,
+    pub base_color_bind_group: wgpu::BindGroup,
     image: image::DynamicImage,
 }
 
@@ -110,7 +109,10 @@ impl GMaterial {
     pub fn from_material_definition_with_bgl(
         material_def: &mut MaterialDefinition,
         device: &wgpu::Device,
-        bgl: &wgpu::BindGroupLayout,
+        texture_bgl: &wgpu::BindGroupLayout,
+        bc_bgl: &wgpu::BindGroupLayout,
+        base_color_buffer: &wgpu::Buffer,
+        base_color_index: usize,
     ) -> Self {
         assert!(material_def.image_source.is_some() || material_def.buffer_bytes.is_some());
         let image: image::DynamicImage = match &material_def.image_source {
@@ -131,10 +133,27 @@ impl GMaterial {
             &material_def.texture_descriptor,
             &material_def.sampler_descripor,
             &material_def.view_descriptor,
-            bgl,
+            texture_bgl,
             device,
         );
-        return Self { texture, image };
+        let base_color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: bc_bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: BindingResource::Buffer(BufferBinding {
+                    buffer: base_color_buffer,
+                    offset: base_color_index as u64 * 16,
+                    size: NonZero::new(16),
+                }),
+            }],
+        });
+
+        return Self {
+            texture,
+            image,
+            base_color_bind_group,
+        };
     }
 
     pub fn write_texture_2d(&self, queue: &wgpu::Queue) {

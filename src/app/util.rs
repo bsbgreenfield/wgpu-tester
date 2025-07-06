@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 
 #[allow(unused_imports)]
@@ -66,6 +67,104 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
         queue,
         config,
     }
+}
+pub(super) fn create_diffuse_bgl(app_config: &AppConfig) -> wgpu::BindGroupLayout {
+    app_config
+        .device
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("diffuse bind group layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        })
+}
+
+pub(super) fn create_base_color_bgl(app_config: &AppConfig) -> wgpu::BindGroupLayout {
+    app_config
+        .device
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("base color bind group layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        })
+}
+/// add this materials base color to the vec whic his to be used as the data for a buffer that
+/// stores all base colors needed for the scene. Return the index within this buffer, which will
+/// be used as the offset for the base color bind group for this material
+pub(super) fn add_base_color(base_color_vec: &mut Vec<[f32; 4]>, base_color: [f32; 4]) -> usize {
+    if base_color == [1.0, 1.0, 1.0, 1.0] {
+        return 0; // the default base color, always stored at offset 0.
+    }
+    for (idx, color) in base_color_vec.iter().enumerate().skip(1) {
+        if color == &base_color {
+            return idx + 1;
+        }
+    }
+    base_color_vec.push(base_color);
+    return base_color_vec.len() - 1;
+}
+
+pub(super) fn setup_global_instance_bind_group(
+    app_config: &AppConfig,
+    scene: &GScene,
+) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let global_instance_bind_group_layout =
+        app_config
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Global bind group layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+    let global_instance_bind_group =
+        app_config
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &global_instance_bind_group_layout,
+                entries: &[BindGroupEntry {
+                    binding: 1,
+                    resource: scene
+                        .get_global_buf()
+                        .expect("should be initialized")
+                        .as_entire_binding(),
+                }],
+                label: Some("Global bind group"),
+            });
+    (
+        global_instance_bind_group_layout,
+        global_instance_bind_group,
+    )
 }
 
 pub(super) fn get_scene<'a>(device: &wgpu::Device, aspect_ratio: f32) -> GScene<'a> {

@@ -1,12 +1,12 @@
 use super::app_config::AppConfig;
-use super::util;
+use crate::app::util::*;
 use crate::model::materials::material::GMaterial;
 use crate::model::materials::texture::GTexture;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
 use std::sync::Arc;
-use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
+use wgpu::util::DeviceExt;
 use winit::window::Window;
 pub struct InputController {
     pub key_d_down: bool,
@@ -44,12 +44,13 @@ pub struct AppState<'a> {
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
     pub materials: Vec<GMaterial>,
+    base_color_buffer: wgpu::Buffer,
     depth_texture: GTexture,
 }
 
 impl<'a> AppState<'a> {
     pub async fn new(window: Arc<Window>) -> Self {
-        let app_config: AppConfig = util::setup_config(window).await;
+        let app_config: AppConfig = setup_config(window).await;
         let shader = app_config
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -57,14 +58,14 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-        let sampler_texture_bgl = AppState::create_diffuse_bgl(&app_config);
-        let mut gscene = util::get_scene(&app_config.device, aspect_ratio);
+        let sampler_texture_bgl = create_diffuse_bgl(&app_config);
+        let mut gscene = get_scene(&app_config.device, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
         let (global_instance_bind_group_layout, global_instance_bind_group) =
-            AppState::setup_global_instance_bind_group(&app_config, &gscene);
+            setup_global_instance_bind_group(&app_config, &gscene);
         let bind_groups = vec![camera_bind_group, global_instance_bind_group];
-
+        let bc_bgl = create_base_color_bgl(&app_config);
         let render_pipeline_layout =
             app_config
                 .device
@@ -74,6 +75,7 @@ impl<'a> AppState<'a> {
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
                         &sampler_texture_bgl,
+                        &bc_bgl,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -127,18 +129,43 @@ impl<'a> AppState<'a> {
                     },
                 });
         let mut materials = Vec::<GMaterial>::new();
-        for m_def in gscene.material_definitions.iter_mut() {
+        let mut base_color_vec: Vec<[f32; 4]> = vec![[1.0, 1.0, 1.0, 1.0]];
+        let mut base_color_indices: Vec<usize> = vec![0];
+        for m_def in gscene.material_definitions.iter() {
+            base_color_indices.push(add_base_color(
+                &mut base_color_vec,
+                m_def.base_color_factors,
+            ));
+        }
+        let base_color_buffer = app_config.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("base color buffer"),
+            size: base_color_indices.len() as u64 * 12,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+            mapped_at_creation: false,
+        });
+        for (idx, m_def) in gscene.material_definitions.iter_mut().enumerate() {
             materials.push(GMaterial::from_material_definition_with_bgl(
                 m_def,
                 &app_config.device,
                 &sampler_texture_bgl,
+                &bc_bgl,
+                &base_color_buffer,
+                base_color_indices[idx],
             ));
         }
         for material in materials.iter() {
             material.write_texture_2d(&app_config.queue);
         }
+        println!("{:?}", base_color_vec);
+        // populate the base color vec with data
+        &app_config.queue.write_buffer(
+            &base_color_buffer,
+            0,
+            bytemuck::cast_slice(&base_color_vec),
+        );
 
         let depth_texture = GTexture::create_depth_texture(&app_config.device, &app_config.config);
+
         Self {
             materials,
             app_config,
@@ -147,73 +174,8 @@ impl<'a> AppState<'a> {
             depth_texture,
             bind_groups,
             input_controller: InputController::new(),
+            base_color_buffer,
         }
-    }
-
-    fn create_diffuse_bgl(app_config: &AppConfig) -> wgpu::BindGroupLayout {
-        app_config
-            .device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("diffuse bind group layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            })
-    }
-
-    fn setup_global_instance_bind_group(
-        app_config: &AppConfig,
-        scene: &GScene,
-    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-        let global_instance_bind_group_layout =
-            app_config
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Global bind group layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: true },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-        let global_instance_bind_group =
-            app_config
-                .device
-                .create_bind_group(&wgpu::BindGroupDescriptor {
-                    layout: &global_instance_bind_group_layout,
-                    entries: &[BindGroupEntry {
-                        binding: 1,
-                        resource: scene
-                            .get_global_buf()
-                            .expect("should be initialized")
-                            .as_entire_binding(),
-                    }],
-                    label: Some("Global bind group"),
-                });
-        (
-            global_instance_bind_group_layout,
-            global_instance_bind_group,
-        )
     }
 
     fn process_input(&mut self) {
@@ -329,9 +291,13 @@ impl<'a> AppState<'a> {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
-            for material in self.materials.iter() {
-                render_pass.set_bind_group(2, &material.texture.bind_group, &[]);
-            }
+            render_pass.set_bind_group(
+                2,
+                self.materials[0].texture.bind_group.as_ref().unwrap(),
+                &[],
+            );
+            render_pass.set_bind_group(3, &self.materials[0].base_color_bind_group, &[]);
+
             render_pass.set_pipeline(&self.render_pipeline);
             //if self.scene.draw_scene(&mut render_pass).is_err() {
             //    panic!("error");
