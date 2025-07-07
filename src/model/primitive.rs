@@ -3,12 +3,14 @@ use std::ops::Range;
 use gltf::Primitive;
 
 use crate::model::{
+    materials::material::{MaterialDefinition, MaterialDefinitionResult},
     util::{get_primitive_data, AttributeType, GltfErrors, InitializationError},
     vertex::ModelVertex,
 };
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GPrimitive {
+    pub material_index: usize,
     tex_coords_offset: u32,
     tex_coords_length: u32,
     position_offset: u32,
@@ -22,7 +24,7 @@ pub(super) struct GPrimitive {
 }
 
 impl GPrimitive {
-    pub(super) fn new(primitive: Primitive) -> Result<Self, GltfErrors> {
+    pub(super) fn new(primitive: Primitive, material_index: usize) -> Result<Self, GltfErrors> {
         let (_, position_accessor) = primitive
             .attributes()
             .find(|a| a.0 == gltf::Semantic::Positions)
@@ -61,6 +63,7 @@ impl GPrimitive {
             get_primitive_data(tex_accessor.as_ref(), AttributeType::TexCoords)?.unwrap_or((0, 0));
 
         Ok(Self {
+            material_index,
             tex_coords_offset,
             tex_coords_length,
             position_offset,

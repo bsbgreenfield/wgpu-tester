@@ -1,8 +1,9 @@
 use super::util::GltfErrors;
-use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
+use crate::model::{materials::material::GMaterial, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
+use std::collections::HashMap;
 use std::ops::{self, Range};
 pub struct GModel {
     meshes: Vec<GMesh>,
@@ -67,10 +68,16 @@ pub(super) struct GMesh {
     primitives: Vec<GPrimitive>,
 }
 impl GMesh {
-    pub(super) fn new(mesh: &Mesh) -> Result<Self, GltfErrors> {
+    pub(super) fn new(
+        mesh: &Mesh,
+        primitive_material_map: &HashMap<usize, usize>,
+    ) -> Result<Self, GltfErrors> {
+        println!("{:?}", primitive_material_map);
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
-            let p = GPrimitive::new(primitive)?;
+            println!("primitive {}", primitive.index());
+            let material_index = *primitive_material_map.get(&primitive.index()).unwrap();
+            let p = GPrimitive::new(primitive, material_index)?;
             g_primitives.push(p);
         }
         Ok(Self {
@@ -80,30 +87,63 @@ impl GMesh {
 }
 
 pub trait GDrawModel<'a> {
-    fn draw_scene(&mut self, scene: &'a GScene);
+    fn draw_scene(&mut self, scene: &'a GScene, materials: &Vec<GMaterial>);
 }
 trait RenderPassUtil<'a> {
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>);
-    fn draw_gmodel(&mut self, model: &'a GModel, instances: u32, num_mesh_instances: u32) -> u32;
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'a GMesh,
+        instances: Range<u32>,
+        materials: &Vec<GMaterial>,
+    );
+    fn draw_gmodel(
+        &mut self,
+        model: &'a GModel,
+        instances: u32,
+        num_mesh_instances: u32,
+        materials: &Vec<GMaterial>,
+    ) -> u32;
 }
 
 impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>) {
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'a GMesh,
+        instances: Range<u32>,
+        materials: &Vec<GMaterial>,
+    ) {
+        let mut material_id = 0;
         for primitive in mesh.primitives.iter() {
-            let (indices_offset, indices_length) = primitive.initialized_index_offset_len.unwrap();
-            let (vertices_offset, vertices_length) =
-                primitive.initialized_vertex_offset_len.unwrap();
-            if indices_length > 0 {
-                self.draw_indexed(
-                    indices_offset..(indices_length + indices_offset),
-                    vertices_offset as i32,
-                    instances.clone(),
-                );
-            } else {
-                self.draw(
-                    vertices_offset..(vertices_offset + vertices_length),
-                    instances.clone(),
-                );
+            unsafe {
+                if primitive.material_index != material_id {
+                    material_id = primitive.material_index;
+                    self.set_bind_group(
+                        2,
+                        materials[material_id]
+                            .texture
+                            .bind_group
+                            .as_ref()
+                            .unwrap_or(materials[0].texture.bind_group.as_ref().unwrap_unchecked()),
+                        &[],
+                    );
+                    self.set_bind_group(3, &materials[material_id].base_color_bind_group, &[]);
+                }
+                let (indices_offset, indices_length) =
+                    primitive.initialized_index_offset_len.unwrap_unchecked();
+                let (vertices_offset, vertices_length) =
+                    primitive.initialized_vertex_offset_len.unwrap_unchecked();
+                if indices_length > 0 {
+                    self.draw_indexed(
+                        indices_offset..(indices_length + indices_offset),
+                        vertices_offset as i32,
+                        instances.clone(),
+                    );
+                } else {
+                    self.draw(
+                        vertices_offset..(vertices_offset + vertices_length),
+                        instances.clone(),
+                    );
+                }
             }
         }
     }
@@ -112,11 +152,16 @@ impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
         model: &'a GModel,
         model_offset: u32,
         model_instance_count: u32,
+        materials: &Vec<GMaterial>,
     ) -> u32 {
         let mut mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
             let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
-            self.draw_gmesh_instanced(mesh, mesh_offset..mesh_offset + num_mesh_instances);
+            self.draw_gmesh_instanced(
+                mesh,
+                mesh_offset..mesh_offset + num_mesh_instances,
+                materials,
+            );
             mesh_offset += num_mesh_instances;
         }
         mesh_offset
@@ -127,10 +172,15 @@ impl<'a, 'b> GDrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
-    fn draw_scene(&mut self, scene: &'b GScene) {
+    fn draw_scene(&mut self, scene: &'b GScene, materials: &Vec<GMaterial>) {
         let mut offset: u32 = 0;
         for (idx, model) in scene.models.iter().enumerate() {
-            offset += self.draw_gmodel(model, offset, scene.get_model_instances()[idx] as u32);
+            offset += self.draw_gmodel(
+                model,
+                offset,
+                scene.get_model_instances()[idx] as u32,
+                materials,
+            );
         }
     }
 }

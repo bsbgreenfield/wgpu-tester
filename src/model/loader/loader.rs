@@ -1,9 +1,10 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::model::{
     animation::animation_controller::SimpleAnimation,
     loader::util::{
         get_data_files, get_material_definitions, get_root_nodes, load_models_from_gltf,
+        MaterialDefinitionData,
     },
     materials::material::MaterialDefinition,
     model::{GModel, LocalTransform},
@@ -30,10 +31,16 @@ impl GltfLoader {
         let binary_data = std::fs::read(files.1).map_err(|e| GltfFileLoadError::IoErr(e))?;
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
         let nodes = gltf.nodes();
-        let material_definitions: Vec<MaterialDefinition> =
-            get_material_definitions(nodes.clone(), &root_node_ids, &binary_data);
-        let (models, local_transforms, simple_animations) =
-            load_models_from_gltf(root_node_ids, nodes, &gltf.animations());
+        let (material_definitions, primitive_material_map): (
+            Vec<MaterialDefinition>,
+            HashMap<usize, usize>,
+        ) = get_material_definitions(nodes.clone(), &root_node_ids, &binary_data);
+        let (models, local_transforms, simple_animations) = load_models_from_gltf(
+            root_node_ids,
+            nodes,
+            &gltf.animations(),
+            &primitive_material_map,
+        );
         let gltf_data = GltfData {
             material_definitions,
             models,

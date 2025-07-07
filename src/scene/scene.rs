@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
@@ -152,7 +151,7 @@ pub struct GSceneData<'a> {
 }
 
 impl<'a> GSceneData<'a> {
-    pub fn build_scene_init(self, device: &'a wgpu::Device, aspect_ratio: f32) -> GScene {
+    pub fn build_scene_init(self, device: &'a wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
         let mut scene = self.build_scene_uninit();
         scene.init(device, aspect_ratio);
         scene

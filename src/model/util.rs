@@ -1,6 +1,6 @@
 use crate::model::model::GMesh;
 use gltf::Accessor;
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 #[derive(Debug)]
 pub enum GltfErrors {
@@ -43,6 +43,7 @@ pub(super) fn get_primitive_data(
 pub(super) fn get_model_meshes(
     mesh_ids: &Vec<u32>,
     nodes: &Vec<gltf::Node>,
+    primitive_material_map: &HashMap<usize, usize>,
 ) -> Result<Vec<GMesh>, GltfErrors> {
     let mut meshes = Vec::<GMesh>::new();
     for mesh_id in mesh_ids.iter() {
@@ -53,7 +54,7 @@ pub(super) fn get_model_meshes(
             .mesh()
             .unwrap();
 
-        let g_mesh = GMesh::new(&mesh)?;
+        let g_mesh = GMesh::new(&mesh, primitive_material_map)?;
         meshes.push(g_mesh);
     }
 

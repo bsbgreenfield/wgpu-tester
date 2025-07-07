@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use gltf::buffer::View;
 
+use crate::model::materials::material::{MaterialDefinition, MaterialDefinitionResult};
+
 pub(super) fn get_image_bytes_from_view(view: &View, main_buffer_data: &Vec<u8>) -> Vec<u8> {
     main_buffer_data[view.offset()..view.offset() + view.length()].to_vec()
 }

@@ -168,5 +168,5 @@ pub(super) fn setup_global_instance_bind_group(
 }
 
 pub(super) fn get_scene<'a>(device: &wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
-    FOX.create(device, aspect_ratio).unwrap()
+    BUGGY.create(device, aspect_ratio).unwrap()
 }

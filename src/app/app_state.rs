@@ -1,12 +1,11 @@
 use super::app_config::AppConfig;
 use crate::app::util::*;
-use crate::model::materials::material::GMaterial;
+use crate::model::materials::material::{GMaterial, MaterialDefinition};
 use crate::model::materials::texture::GTexture;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
 use winit::window::Window;
 pub struct InputController {
     pub key_d_down: bool,
@@ -143,6 +142,15 @@ impl<'a> AppState<'a> {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
             mapped_at_creation: false,
         });
+
+        materials.push(GMaterial::from_material_definition_with_bgl(
+            &mut MaterialDefinition::white(),
+            &app_config.device,
+            &sampler_texture_bgl,
+            &bc_bgl,
+            &base_color_buffer,
+            base_color_indices[0],
+        ));
         for (idx, m_def) in gscene.material_definitions.iter_mut().enumerate() {
             materials.push(GMaterial::from_material_definition_with_bgl(
                 m_def,
@@ -150,7 +158,7 @@ impl<'a> AppState<'a> {
                 &sampler_texture_bgl,
                 &bc_bgl,
                 &base_color_buffer,
-                base_color_indices[idx],
+                base_color_indices[idx + 1],
             ));
         }
         for material in materials.iter() {
@@ -320,7 +328,7 @@ impl<'a> AppState<'a> {
                     .expect("local transform data should be initialized")
                     .slice(..),
             );
-            render_pass.draw_scene(&self.gscene);
+            render_pass.draw_scene(&self.gscene, &self.materials);
         }
         self.app_config
             .queue
