@@ -1,7 +1,6 @@
 use std::ops::Range;
 
 use gltf::Primitive;
-use rand::Rng;
 
 use crate::model::{
     util::{get_primitive_data, AttributeType, GltfErrors, InitializationError},

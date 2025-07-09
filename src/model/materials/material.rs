@@ -1,11 +1,10 @@
 use std::{
     fmt::{self, Debug},
-    num::NonZero,
     path::PathBuf,
 };
 
-use image::{GenericImageView, ImageBuffer};
-use wgpu::{BindingResource, BufferBinding, Extent3d, FilterMode, TextureUsages};
+use image::GenericImageView;
+use wgpu::{Extent3d, FilterMode, TextureUsages};
 
 use crate::model::materials::{
     texture::GTexture,

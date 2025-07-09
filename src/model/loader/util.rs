@@ -32,10 +32,6 @@ impl ModelMeshData {
     }
 }
 
-pub(super) struct MaterialDefinitionData<'a> {
-    pub material_definitions: Vec<MaterialDefinition<'a>>,
-    pub primitive_to_def_map: HashMap<usize, usize>,
-}
 #[allow(dead_code)]
 pub(super) struct GltfBinaryExtras {
     animation: Option<PathBuf>,

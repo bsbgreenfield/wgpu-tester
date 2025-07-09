@@ -107,9 +107,3 @@ pub const MONKEY: SceneScaffold = SceneScaffold {
     file_paths: &["monkey"],
     additional_instances: &[],
 };
-
-pub const POLLY: SceneScaffold = SceneScaffold {
-    global_transform_overrides: &[],
-    file_paths: &["polly"],
-    additional_instances: &[],
-};

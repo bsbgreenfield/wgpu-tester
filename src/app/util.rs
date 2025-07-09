@@ -1,9 +1,9 @@
 use std::sync::Arc;
-use wgpu::{BindGroupEntry, BindGroupLayoutEntry, BufferBindingType};
+use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
 use winit::window::Window;
 
 #[allow(unused_imports)]
-use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FOX, MONKEY, POLLY};
+use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FOX, MONKEY};
 #[allow(unused_imports)]
 use crate::{
     app::app_config::AppConfig,
@@ -114,6 +114,9 @@ pub(super) fn create_base_color_bgl(app_config: &AppConfig) -> wgpu::BindGroupLa
 /// add this materials base color to the vec whic his to be used as the data for a buffer that
 /// stores all base colors needed for the scene. Return the index within this buffer, which will
 /// be used as the offset for the base color bind group for this material
+///
+///
+#[allow(unused)]
 pub(super) fn add_base_color(base_color_vec: &mut Vec<[f32; 4]>, base_color: [f32; 4]) -> usize {
     if base_color == [1.0, 1.0, 1.0, 1.0] {
         return 0; // the default base color, always stored at offset 0.
@@ -168,5 +171,5 @@ pub(super) fn setup_global_instance_bind_group(
 }
 
 pub(super) fn get_scene<'a>(device: &wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
-    FOX.create(device, aspect_ratio).unwrap()
+    TRUCK.create(device, aspect_ratio).unwrap()
 }

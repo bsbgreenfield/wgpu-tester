@@ -75,7 +75,8 @@ impl GMesh {
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
             let primitive_id = 10000 + (100 * mesh.index()) + (10 * primitive.index());
-            let material_index = *primitive_material_map.get(&primitive_id).unwrap();
+            println!("{:?}", primitive_material_map);
+            let material_index = *primitive_material_map.get(&primitive_id).unwrap_or(&0);
             let p = GPrimitive::new(primitive, material_index)?;
             g_primitives.push(p);
         }
