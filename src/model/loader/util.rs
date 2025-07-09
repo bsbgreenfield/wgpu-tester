@@ -10,7 +10,7 @@ use gltf::{animation::Channel, Gltf};
 use crate::model::{
     animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
     loader::loader::GltfFileLoadError,
-    materials::material::{MaterialDefinition, MaterialDefinitionResult},
+    materials::material::MaterialDefinition,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
@@ -178,62 +178,39 @@ fn find_model_meshes(
     }
     model_mesh_data
 }
+
 pub(super) fn get_material_definitions<'a>(
-    nodes: gltf::iter::Nodes,
-    root_nodes_ids: &Vec<usize>,
+    materials: gltf::iter::Materials,
+    meshes: gltf::iter::Meshes,
     main_buffer_data: &Vec<u8>,
 ) -> (Vec<MaterialDefinition<'a>>, HashMap<usize, usize>) {
-    let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut material_definitions: Vec<MaterialDefinition> = Vec::new();
     let mut primitive_material_map: HashMap<usize, usize> = HashMap::new();
-    for root_node in root_nodes_ids.iter() {
-        let rid = *root_node;
-        let root_node = nodes[rid].clone();
-        if let Some(mesh) = root_node.mesh() {
-            for primitive in mesh.primitives() {
-                match create_material_def(
-                    &primitive.material(),
-                    &material_definitions,
-                    main_buffer_data,
-                ) {
-                    MaterialDefinitionResult::New(def) => {
-                        primitive_material_map
-                            .insert(primitive.index(), material_definitions.len() + 1); // +1,
-                                                                                        // because slot 0 will be occupied by the default material
-                        material_definitions.push(def);
-                    }
-                    MaterialDefinitionResult::Existing(index) => {
-                        primitive_material_map.insert(primitive.index(), index);
-                    }
-                }
+    for material in materials.into_iter() {
+        material_definitions.push(MaterialDefinition::new(
+            &material,
+            main_buffer_data,
+            material_definitions.len() + 1,
+        ));
+    }
+    for mesh in meshes.into_iter() {
+        for primitive in mesh.primitives().into_iter() {
+            let primitive_id = 10000 + (100 * mesh.index()) + (10 * primitive.index());
+            if primitive.material().index().is_some() {
+                primitive_material_map.insert(
+                    primitive_id,
+                    material_definitions
+                        .iter()
+                        .position(|md| md.id == primitive.material().index().unwrap())
+                        .expect("should be a material with this id")
+                        + 1,
+                );
+            } else {
+                primitive_material_map.insert(primitive.index(), 0);
             }
         }
     }
     (material_definitions, primitive_material_map)
-}
-
-fn create_material_def<'a>(
-    material: &gltf::Material,
-    material_defs: &Vec<MaterialDefinition>,
-    main_buffer_data: &Vec<u8>,
-) -> MaterialDefinitionResult<'a> {
-    for (idx, def) in material_defs.iter().enumerate() {
-        // 9999 is the id given to the defaul texture, which is used if the primitive has no
-        // provided material
-        if material.index().is_none() {
-            return MaterialDefinitionResult::Existing(0);
-        } else if def.id == material.index().unwrap() {
-            // if the id of one of the already created material definitions matches this material,
-            // then the associated primitive will reference that material. It is located
-            // at idx + 1, to account for slot zero, which is reserved or the default material
-            return MaterialDefinitionResult::Existing(idx + 1);
-        }
-    }
-    return MaterialDefinitionResult::New(MaterialDefinition::new(
-        material,
-        main_buffer_data,
-        material_defs.len(),
-    ));
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

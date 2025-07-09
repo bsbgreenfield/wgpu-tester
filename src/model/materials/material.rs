@@ -1,4 +1,8 @@
-use std::{num::NonZero, path::PathBuf};
+use std::{
+    fmt::{self, Debug},
+    num::NonZero,
+    path::PathBuf,
+};
 
 use image::{GenericImageView, ImageBuffer};
 use wgpu::{BindingResource, BufferBinding, Extent3d, FilterMode, TextureUsages};
@@ -10,13 +14,6 @@ use crate::model::materials::{
         mag_filter_from_gltf, min_filter_from_gltf,
     },
 };
-
-pub enum MaterialDefinitionResult<'a> {
-    /// A new MaterialDefinition was created
-    New(MaterialDefinition<'a>),
-    /// The Material Definition has already been created at the returned index
-    Existing(usize),
-}
 
 #[allow(unused)]
 pub struct MaterialDefinition<'a> {
@@ -31,6 +28,18 @@ pub struct MaterialDefinition<'a> {
     texture_descriptor: wgpu::TextureDescriptor<'a>,
     sampler_descriptor: wgpu::SamplerDescriptor<'a>,
     view_descriptor: wgpu::TextureViewDescriptor<'a>,
+}
+
+impl<'a> Debug for MaterialDefinition<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::write(
+            f,
+            format_args!(
+                "index: {}, id: {}, image_source: {:?}, base_colors: {:?}",
+                self.index, self.id, self.image_source, self.base_color_factors
+            ),
+        )
+    }
 }
 impl<'a> MaterialDefinition<'a> {
     pub fn white() -> Self {
@@ -152,73 +161,63 @@ impl<'a> MaterialDefinition<'a> {
 
 pub struct GMaterial {
     pub texture: GTexture,
-    pub base_color_bind_group: wgpu::BindGroup,
     image: Option<image::DynamicImage>,
+    pub bind_group: wgpu::BindGroup,
 }
 
 impl GMaterial {
     pub fn from_material_definition_with_bgl(
         material_def: &mut MaterialDefinition,
         device: &wgpu::Device,
-        texture_bgl: &wgpu::BindGroupLayout,
-        bc_bgl: &wgpu::BindGroupLayout,
-        base_color_buffer: &wgpu::Buffer,
-        base_color_index: usize,
+        bgl: &wgpu::BindGroupLayout,
     ) -> Self {
-        // create the bind group for the base color
-        let base_color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: bc_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: BindingResource::Buffer(BufferBinding {
-                    buffer: base_color_buffer,
-                    offset: base_color_index as u64 * 16,
-                    size: NonZero::new(16),
-                }),
-            }],
-        });
-        if material_def.image_source.is_none() && material_def.buffer_bytes.is_none() {
-            let texture = GTexture::new(
-                &material_def.texture_descriptor,
-                &material_def.sampler_descriptor,
-                &material_def.view_descriptor,
-                texture_bgl,
-                device,
-            );
-            return Self {
-                texture,
-                base_color_bind_group,
-                image: None,
-            };
-        } else {
-            let image: image::DynamicImage = match &material_def.image_source {
+        let no_texture: bool =
+            !(material_def.image_source.is_some() || material_def.buffer_bytes.is_some());
+        let maybe_image = match no_texture {
+            true => None,
+            false => match &material_def.image_source {
                 Some(image_src) => {
-                    util::get_image_from_path(&image_src).expect("image is located in path")
+                    Some(util::get_image_from_path(&image_src).expect("image is located in path"))
                 }
                 None => {
                     let image_bytes = material_def.buffer_bytes.as_ref().unwrap();
-                    image::load_from_memory(image_bytes).expect("image data in bytes")
+                    Some(image::load_from_memory(image_bytes).expect("image data in bytes"))
                 }
-            };
+            },
+        };
+        if let Some(image) = &maybe_image {
             material_def.texture_descriptor.size = Extent3d {
                 width: image.width(),
                 height: image.height(),
                 depth_or_array_layers: 1,
             };
-            let texture = GTexture::new(
-                &material_def.texture_descriptor,
-                &material_def.sampler_descriptor,
-                &material_def.view_descriptor,
-                texture_bgl,
-                device,
-            );
+        }
+        let texture = GTexture::new(
+            &material_def.texture_descriptor,
+            &material_def.sampler_descriptor,
+            &material_def.view_descriptor,
+            device,
+        );
 
-            return Self {
-                texture,
-                image: Some(image),
-                base_color_bind_group,
-            };
+        // create the bind group for the base color
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture.sampler),
+                },
+            ],
+        });
+        Self {
+            image: maybe_image,
+            texture,
+            bind_group,
         }
     }
 
@@ -254,7 +253,7 @@ impl GMaterial {
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                &[0, 0, 0, 255],
+                &[255, 255, 255, 255],
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(4),

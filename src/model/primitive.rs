@@ -1,9 +1,9 @@
 use std::ops::Range;
 
 use gltf::Primitive;
+use rand::Rng;
 
 use crate::model::{
-    materials::material::{MaterialDefinition, MaterialDefinitionResult},
     util::{get_primitive_data, AttributeType, GltfErrors, InitializationError},
     vertex::ModelVertex,
 };
@@ -108,6 +108,7 @@ impl GPrimitive {
                     Some(n) => n[i * 3..i * 3 + 3].try_into().unwrap(),
                     None => [0.0, 0.0, 0.0],
                 },
+                base_color_index: self.material_index as u32,
             })
             .collect();
         vertex_vec

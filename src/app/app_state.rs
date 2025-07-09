@@ -43,7 +43,7 @@ pub struct AppState<'a> {
     bind_groups: Vec<wgpu::BindGroup>,
     pub input_controller: InputController,
     pub materials: Vec<GMaterial>,
-    base_color_buffer: wgpu::Buffer,
+    base_color_bind_group: wgpu::BindGroup,
     depth_texture: GTexture,
 }
 
@@ -63,8 +63,9 @@ impl<'a> AppState<'a> {
             gscene.get_camera_bind_group(&app_config.device);
         let (global_instance_bind_group_layout, global_instance_bind_group) =
             setup_global_instance_bind_group(&app_config, &gscene);
-        let bind_groups = vec![camera_bind_group, global_instance_bind_group];
-        let bc_bgl = create_base_color_bgl(&app_config);
+
+        let base_color_bgl = create_base_color_bgl(&app_config);
+
         let render_pipeline_layout =
             app_config
                 .device
@@ -74,7 +75,7 @@ impl<'a> AppState<'a> {
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
                         &sampler_texture_bgl,
-                        &bc_bgl,
+                        &base_color_bgl,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -127,53 +128,64 @@ impl<'a> AppState<'a> {
                         conservative: false,
                     },
                 });
+
+        // **************** SETUP MATERIALS *****************************
         let mut materials = Vec::<GMaterial>::new();
-        let mut base_color_vec: Vec<[f32; 4]> = vec![[1.0, 1.0, 1.0, 1.0]];
-        let mut base_color_indices: Vec<usize> = vec![0];
+        let mut base_color_vec: Vec<[f32; 4]> = vec![[1.0; 4]];
+
+        println!("{:?}", gscene.material_definitions.len());
+        // prepare base color buffer data
         for m_def in gscene.material_definitions.iter() {
-            base_color_indices.push(add_base_color(
-                &mut base_color_vec,
-                m_def.base_color_factors,
-            ));
+            base_color_vec.push(m_def.base_color_factors);
         }
         let base_color_buffer = app_config.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("base color buffer"),
-            size: base_color_indices.len() as u64 * 12,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+            size: base_color_vec.len() as u64 * 16,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
             mapped_at_creation: false,
         });
 
+        // add default material to the vec in the first slot
         materials.push(GMaterial::from_material_definition_with_bgl(
             &mut MaterialDefinition::white(),
             &app_config.device,
             &sampler_texture_bgl,
-            &bc_bgl,
-            &base_color_buffer,
-            base_color_indices[0],
         ));
-        for (idx, m_def) in gscene.material_definitions.iter_mut().enumerate() {
+
+        // add all other materials
+        for m_def in gscene.material_definitions.iter_mut() {
             materials.push(GMaterial::from_material_definition_with_bgl(
                 m_def,
                 &app_config.device,
                 &sampler_texture_bgl,
-                &bc_bgl,
-                &base_color_buffer,
-                base_color_indices[idx + 1],
             ));
         }
+
+        // create all textures
         for material in materials.iter() {
             material.write_texture_2d(&app_config.queue);
         }
+
         println!("{:?}", base_color_vec);
         // populate the base color vec with data
-        &app_config.queue.write_buffer(
-            &base_color_buffer,
-            0,
-            bytemuck::cast_slice(&base_color_vec),
-        );
+        app_config
+            .queue
+            .write_buffer(&base_color_buffer, 0, bytemuck::cast_slice(&base_color_vec));
 
+        let base_color_bind_group =
+            app_config
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("base color uniform bg"),
+                    layout: &base_color_bgl,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: base_color_buffer.as_entire_binding(),
+                    }],
+                });
         let depth_texture = GTexture::create_depth_texture(&app_config.device, &app_config.config);
 
+        let bind_groups = vec![camera_bind_group, global_instance_bind_group];
         Self {
             materials,
             app_config,
@@ -182,7 +194,7 @@ impl<'a> AppState<'a> {
             depth_texture,
             bind_groups,
             input_controller: InputController::new(),
-            base_color_buffer,
+            base_color_bind_group,
         }
     }
 
@@ -299,12 +311,8 @@ impl<'a> AppState<'a> {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
-            render_pass.set_bind_group(
-                2,
-                self.materials[0].texture.bind_group.as_ref().unwrap(),
-                &[],
-            );
-            render_pass.set_bind_group(3, &self.materials[0].base_color_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.materials[0].bind_group, &[]);
+            render_pass.set_bind_group(3, &self.base_color_bind_group, &[]);
 
             render_pass.set_pipeline(&self.render_pipeline);
             //if self.scene.draw_scene(&mut render_pass).is_err() {

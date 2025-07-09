@@ -6,6 +6,7 @@ pub struct ModelVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub tex_coords: [f32; 2],
+    pub base_color_index: u32,
 }
 
 pub trait Vertex {
@@ -33,6 +34,11 @@ impl Vertex for ModelVertex {
                     offset: mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Uint32,
                 },
             ],
         }

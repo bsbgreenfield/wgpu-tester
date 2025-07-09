@@ -72,11 +72,10 @@ impl GMesh {
         mesh: &Mesh,
         primitive_material_map: &HashMap<usize, usize>,
     ) -> Result<Self, GltfErrors> {
-        println!("{:?}", primitive_material_map);
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
-            println!("primitive {}", primitive.index());
-            let material_index = *primitive_material_map.get(&primitive.index()).unwrap();
+            let primitive_id = 10000 + (100 * mesh.index()) + (10 * primitive.index());
+            let material_index = *primitive_material_map.get(&primitive_id).unwrap();
             let p = GPrimitive::new(primitive, material_index)?;
             g_primitives.push(p);
         }
@@ -114,20 +113,11 @@ impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
     ) {
         let mut material_id = 0;
         for primitive in mesh.primitives.iter() {
+            if primitive.material_index != material_id {
+                material_id = primitive.material_index;
+                self.set_bind_group(2, &materials[material_id].bind_group, &[]);
+            }
             unsafe {
-                if primitive.material_index != material_id {
-                    material_id = primitive.material_index;
-                    self.set_bind_group(
-                        2,
-                        materials[material_id]
-                            .texture
-                            .bind_group
-                            .as_ref()
-                            .unwrap_or(materials[0].texture.bind_group.as_ref().unwrap_unchecked()),
-                        &[],
-                    );
-                    self.set_bind_group(3, &materials[material_id].base_color_bind_group, &[]);
-                }
                 let (indices_offset, indices_length) =
                     primitive.initialized_index_offset_len.unwrap_unchecked();
                 let (vertices_offset, vertices_length) =
@@ -222,27 +212,27 @@ impl LocalTransform {
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                     shader_location: 4,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                     shader_location: 5,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
                     shader_location: 6,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
                     shader_location: 7,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 8,
                     format: wgpu::VertexFormat::Uint32,
                 },
             ],

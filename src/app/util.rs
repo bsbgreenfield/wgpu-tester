@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use wgpu::{BindGroupEntry, BindGroupLayoutEntry};
+use wgpu::{BindGroupEntry, BindGroupLayoutEntry, BufferBindingType};
 use winit::window::Window;
 
 #[allow(unused_imports)]
@@ -103,7 +103,7 @@ pub(super) fn create_base_color_bgl(app_config: &AppConfig) -> wgpu::BindGroupLa
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
@@ -119,7 +119,7 @@ pub(super) fn add_base_color(base_color_vec: &mut Vec<[f32; 4]>, base_color: [f3
         return 0; // the default base color, always stored at offset 0.
     }
     for (idx, color) in base_color_vec.iter().enumerate().skip(1) {
-        if color == &base_color {
+        if color == &base_color[0..4] {
             return idx + 1;
         }
     }
@@ -168,5 +168,5 @@ pub(super) fn setup_global_instance_bind_group(
 }
 
 pub(super) fn get_scene<'a>(device: &wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
-    BUGGY.create(device, aspect_ratio).unwrap()
+    FOX.create(device, aspect_ratio).unwrap()
 }
