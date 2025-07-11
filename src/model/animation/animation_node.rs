@@ -86,9 +86,9 @@ impl AnimationNode {
         }
     }
 
-    pub(super) fn update_mesh_transforms(
+    pub(super) fn update_node_transforms<T>(
         &self,
-        instance: &mut AnimationInstance,
+        instance: &mut AnimationInstance<T>,
         base_translation: cgmath::Matrix4<f32>,
         node_to_lt_index_map: &HashMap<usize, usize>,
     ) -> bool {
@@ -186,12 +186,12 @@ impl AnimationNode {
         // apply the new transform to the base translation using the optional TRS components
         // assign the mesh transform to the proper slot for this instance
         if self.node_type == NodeType::Mesh {
-            instance.mesh_transforms[node_to_lt_index_map[&self.node_id]] = composed_transform
+            instance.node_transforms[node_to_lt_index_map[&self.node_id]] = composed_transform
                 .unwrap_or(base_translation * self.transform)
                 .into();
         }
         for child_node in &self.children {
-            if !child_node.update_mesh_transforms(
+            if !child_node.update_node_transforms(
                 instance,
                 composed_transform.unwrap_or(base_translation * self.transform),
                 node_to_lt_index_map,

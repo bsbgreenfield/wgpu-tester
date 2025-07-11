@@ -135,6 +135,7 @@ pub(super) fn load_models_from_gltf<'a>(
                 animation_node,
                 models.len(),
                 model_mesh_data.node_to_lt_index_map,
+                model_mesh_data.joint_ids.len() > 0,
             ));
         }
 

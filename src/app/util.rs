@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::scene::scene_scaffolds::FLEXY_BOX;
 #[allow(unused_imports)]
-use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FOX, MONKEY, POLLY};
+use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FLEXY_BOX, FOX, MONKEY, POLLY};
 #[allow(unused_imports)]
 use crate::{
     app::app_config::AppConfig,
@@ -70,5 +69,7 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    FOX.create(&app_config.device, aspect_ratio).unwrap()
+    BOX_ANIMATED
+        .create(&app_config.device, aspect_ratio)
+        .unwrap()
 }
