@@ -14,6 +14,7 @@ bytemuck = { version = "1.22.0", features = ["derive"] }
 cgmath = "0.18.0"
 devtimer = "4.0.1"
 time = "0.3.41"
+base64 = "0.22.1"
 
 [dependencies.gltf]
 version = "1.4.1"

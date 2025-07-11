@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
 use crate::model::animation::animation_controller::SceneAnimationController;
-use crate::model::animation::animation_controller::SimpleAnimation;
+use crate::model::animation::animation::SimpleAnimation;
 use crate::model::loader::loader::GltfData;
 use crate::model::model::*;
 use crate::model::util::*;

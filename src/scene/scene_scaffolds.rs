@@ -42,6 +42,12 @@ impl<'a> SceneScaffold<'a> {
     }
 }
 
+pub const FLEXY_BOX: SceneScaffold = SceneScaffold {
+    file_paths: &["flexy-box"],
+    global_transform_overrides: &[],
+    additional_instances: &[],
+};
+
 pub const BUGGY: SceneScaffold = SceneScaffold {
     file_paths: &["buggy"],
     global_transform_overrides: &[ScaffoldGTOverride {

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use crate::model::{
-    animation::animation_controller::SimpleAnimation,
-    loader::util::{get_data_files, get_root_nodes, load_models_from_gltf},
+    animation::animation::SimpleAnimation,
+    loader::util::{decode_gltf_data_uri, get_data_files, get_root_nodes, load_models_from_gltf},
     model::{GModel, LocalTransform},
 };
 use gltf::Gltf;
@@ -23,12 +23,38 @@ impl GltfLoader {
             ));
         }
         let files = get_data_files(dir_path)?;
-        let gltf = Gltf::open(&files.0).map_err(|e| GltfFileLoadError::GltfError(e))?;
-        let binary_data = std::fs::read(files.1).map_err(|e| GltfFileLoadError::IoErr(e))?;
+        let gltf = Gltf::open(&files.gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
+        let binary_data = match files.bin {
+            Some(bin_file) => std::fs::read(bin_file).map_err(|e| GltfFileLoadError::IoErr(e))?,
+            None => {
+                let mut bin_data = Vec::<u8>::new();
+                for buffer in gltf.buffers() {
+                    let data = match buffer.source() {
+                        gltf::buffer::Source::Bin => Err(GltfFileLoadError::NoBinaryFile),
+                        gltf::buffer::Source::Uri(uri) => {
+                            decode_gltf_data_uri(uri).map_err(|_| GltfFileLoadError::BadFile)
+                        }
+                    };
+                    bin_data.extend(data?);
+                }
+                bin_data
+            }
+        };
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
+        let mut joint_ids: Vec<usize> = Vec::new();
+        for skin in gltf.skins() {
+            for joint in skin.joints() {
+                joint_ids.push(joint.index());
+            }
+        }
         let nodes = gltf.nodes();
-        let (models, local_transforms, simple_animations) =
-            load_models_from_gltf(root_node_ids, nodes, &gltf.animations());
+        let (models, local_transforms, simple_animations) = load_models_from_gltf(
+            root_node_ids,
+            &joint_ids,
+            nodes,
+            &gltf.animations(),
+            &gltf.buffers(),
+        );
         let gltf_data = GltfData {
             models,
             binary_data,

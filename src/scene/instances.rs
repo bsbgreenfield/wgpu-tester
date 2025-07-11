@@ -1,5 +1,5 @@
 use crate::{
-    model::{animation::animation_controller::AnimationFrame, model::GModel},
+    model::{animation::animation::AnimationFrame, model::GModel},
     scene::{scene_scaffolds::SceneScaffold, util::calculate_model_mesh_offsets},
     transforms,
 };

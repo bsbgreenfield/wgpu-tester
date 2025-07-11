@@ -79,10 +79,10 @@ pub(super) struct GMesh {
     primitives: Vec<GPrimitive>,
 }
 impl GMesh {
-    pub(super) fn new(mesh: &Mesh) -> Result<Self, GltfErrors> {
+    pub(super) fn new(mesh: &Mesh, buffer_offsets: &Vec<u64>) -> Result<Self, GltfErrors> {
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
-            let p = GPrimitive::new(primitive)?;
+            let p = GPrimitive::new(primitive, buffer_offsets)?;
             g_primitives.push(p);
         }
         Ok(Self {

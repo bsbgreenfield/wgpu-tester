@@ -4,17 +4,33 @@ use std::{
     path::PathBuf,
 };
 
+use base64::Engine;
 use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
-    animation::{animation_controller::SimpleAnimation, animation_node::AnimationNode},
+    animation::{animation::SimpleAnimation, animation_node::AnimationNode},
     loader::loader::GltfFileLoadError,
     model::{GModel, LocalTransform},
     util::get_model_meshes,
 };
 
+struct NodeData {
+    mesh_data: Option<ModelMeshData>,
+    joint_data: Option<Vec<u32>>,
+}
+impl NodeData {
+    fn new() -> Self {
+        Self {
+            mesh_data: Some(ModelMeshData::new()),
+            joint_data: None,
+        }
+    }
+}
+
 struct ModelMeshData {
+    joint_ids: Vec<u32>,
+    joint_pose_transforms: Vec<[[f32; 4]; 4]>,
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     mesh_transform_buckets: Vec<Vec<LocalTransform>>,
@@ -27,6 +43,8 @@ impl ModelMeshData {
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             mesh_transform_buckets: Vec::new(),
+            joint_ids: Vec::new(),
+            joint_pose_transforms: Vec::new(),
         }
     }
 }
@@ -35,7 +53,40 @@ pub(super) struct GltfBinaryExtras {
     animation: Option<PathBuf>,
     textures: Option<Vec<PathBuf>>,
 }
-pub(super) type GltfFiles = (PathBuf, PathBuf, Option<GltfBinaryExtras>);
+pub(super) struct GltfFiles {
+    pub(super) gltf: PathBuf,
+    pub(super) bin: Option<PathBuf>,
+}
+
+use std::error::Error;
+
+pub(super) fn decode_gltf_data_uri(uri: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    // Step 1: Check prefix
+    const PREFIX: &str = "data:application/gltf-buffer;";
+    if !uri.starts_with(PREFIX) {
+        return Err("URI does not start with expected prefix".into());
+    }
+
+    // Step 2: Split metadata and encoded data
+    let comma_index = uri.find(',').ok_or("No comma found in URI")?;
+    let (meta, encoded_data) = uri[PREFIX.len()..].split_at(comma_index - PREFIX.len());
+    let encoded_data = &encoded_data[1..]; // Skip the comma
+
+    // Step 3: Match encoding and decode
+    let decoded = match meta.trim() {
+        "base64" => base64_decode(encoded_data)?,
+        other => return Err(format!("Unsupported encoding: {}", other).into()),
+    };
+
+    Ok(decoded)
+}
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    use base64::prelude::BASE64_STANDARD;
+    // Uses standard lib base64 via experimental feature or stable crate if you choose
+    let decoded = BASE64_STANDARD.decode(input)?; // Requires base64 crate
+    Ok(decoded)
+}
 
 fn build_animation_node_tree(node: &gltf::Node) -> AnimationNode {
     let children: Vec<AnimationNode> = node
@@ -47,8 +98,10 @@ fn build_animation_node_tree(node: &gltf::Node) -> AnimationNode {
 
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
+    joint_ids: &Vec<usize>,
     nodes: gltf::iter::Nodes<'a>,
     animations: &gltf::iter::Animations,
+    buffers: &gltf::iter::Buffers,
 ) -> (Vec<GModel>, Vec<LocalTransform>, Vec<SimpleAnimation>) {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
@@ -56,7 +109,9 @@ pub(super) fn load_models_from_gltf<'a>(
     let mut simple_animations: Vec<SimpleAnimation> = Vec::new();
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
+
         let root_node: &gltf::Node<'a> = &nodes[*rid];
+
         if root_node.camera().is_some() {
             continue;
         }
@@ -66,8 +121,10 @@ pub(super) fn load_models_from_gltf<'a>(
             root_node,
             cgmath::Matrix4::<f32>::identity(),
             model_mesh_data,
+            joint_ids,
         );
-
+        println!(" JOINTS: {:?}", model_mesh_data.joint_ids);
+        println!(" MESHES: {:?}", model_mesh_data.mesh_ids);
         // get a animation node trees
         let maybe_animation_node = load_animations(&root_node, animations);
         // create a new SimpleAnimation
@@ -81,9 +138,10 @@ pub(super) fn load_models_from_gltf<'a>(
             ));
         }
 
+        let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
         // instantiate meshes, instantiate model
-        let meshes =
-            get_model_meshes(&model_mesh_data.mesh_ids, &nodes).expect("meshes for this model");
+        let meshes = get_model_meshes(&model_mesh_data.mesh_ids, &nodes, &buffer_offsets)
+            .expect("meshes for this model");
         let mi_len = model_mesh_data.mesh_instances.len().clone();
         let g_model = GModel::new(meshes, model_mesh_data.mesh_instances);
 
@@ -101,6 +159,16 @@ pub(super) fn load_models_from_gltf<'a>(
         models.push(g_model);
     }
     (models, local_transform_data, simple_animations)
+}
+
+fn get_buffer_offsets(buffers: &gltf::iter::Buffers) -> Vec<u64> {
+    let mut buffer_offsets = Vec::<u64>::new();
+    let mut last_buffer_size = 0;
+    for buffer in buffers.clone().into_iter() {
+        buffer_offsets.push(last_buffer_size);
+        last_buffer_size += buffer.length() as u64;
+    }
+    buffer_offsets
 }
 
 // for each distinct animation on a single model
@@ -131,6 +199,7 @@ fn find_model_meshes(
     root_node: &gltf::Node,
     base_translation: cgmath::Matrix4<f32>,
     mut model_mesh_data: ModelMeshData,
+    joint_ids: &Vec<usize>,
 ) -> ModelMeshData {
     let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
     let new_trans = base_translation * cg_trans;
@@ -166,9 +235,18 @@ fn find_model_meshes(
             .node_to_lt_index_map
             .insert(root_node.index(), transform_index);
         assert!(unique_kv.is_none()); // each node should be unique
+    } else {
+        match joint_ids.binary_search(&root_node.index()) {
+            Ok(_) => {
+                model_mesh_data.joint_ids.push(root_node.index() as u32);
+                model_mesh_data.joint_pose_transforms.push(new_trans.into());
+            }
+            Err(_) => {}
+        }
     }
+
     for child_node in root_node.children() {
-        model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data);
+        model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data, joint_ids);
     }
     model_mesh_data
 }
@@ -214,10 +292,10 @@ pub(super) fn get_data_files(dir_path: PathBuf) -> Result<GltfFiles, GltfFileLoa
                 bin_file = Some(dir_entry.path());
                 break 'outer;
             }
-        } else {
-            return Err(GltfFileLoadError::BadFile);
         }
     }
-    let bin = bin_file.expect("bin");
-    Ok((gltf_file, bin, None))
+    Ok(GltfFiles {
+        gltf: gltf_file,
+        bin: bin_file,
+    })
 }

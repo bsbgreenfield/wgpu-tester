@@ -20,7 +20,7 @@ pub(super) struct GPrimitive {
 }
 
 impl GPrimitive {
-    pub(super) fn new(primitive: Primitive) -> Result<Self, GltfErrors> {
+    pub(super) fn new(primitive: Primitive, buffer_offsets: &Vec<u64>) -> Result<Self, GltfErrors> {
         let (_, position_accessor) = primitive
             .attributes()
             .find(|a| a.0 == gltf::Semantic::Positions)
@@ -35,14 +35,26 @@ impl GPrimitive {
         };
         let indices_accessor = primitive.indices();
 
-        let (position_offset, position_length) =
-            get_primitive_data(Some(&position_accessor), AttributeType::Position)?.ok_or(
-                GltfErrors::VericesError(String::from("could not extract position data")),
-            )?;
-        let (normal_offset, normal_length) =
-            get_primitive_data(normals_accessor.as_ref(), AttributeType::Normal)?.unwrap_or((0, 0));
-        let (indices_offset, indices_length) =
-            get_primitive_data(indices_accessor.as_ref(), AttributeType::Index)?.unwrap_or((0, 0));
+        let (position_offset, position_length) = get_primitive_data(
+            Some(&position_accessor),
+            AttributeType::Position,
+            buffer_offsets,
+        )?
+        .ok_or(GltfErrors::VericesError(String::from(
+            "could not extract position data",
+        )))?;
+        let (normal_offset, normal_length) = get_primitive_data(
+            normals_accessor.as_ref(),
+            AttributeType::Normal,
+            buffer_offsets,
+        )?
+        .unwrap_or((0, 0));
+        let (indices_offset, indices_length) = get_primitive_data(
+            indices_accessor.as_ref(),
+            AttributeType::Index,
+            buffer_offsets,
+        )?
+        .unwrap_or((0, 0));
         Ok(Self {
             position_offset,
             position_length,

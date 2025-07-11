@@ -224,18 +224,18 @@ impl<'a> AppState<'a> {
                 );
             }
         }
-        let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.3));
-        self.gscene.update_global_transform_x(0, rot.into());
-        unsafe {
-            self.app_config.queue.write_buffer(
-                self.gscene
-                    .get_global_transform_buffer()
-                    .as_ref()
-                    .unwrap_unchecked(),
-                0,
-                bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
-            );
-        }
+        //let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.3));
+        //self.gscene.update_global_transform_x(0, rot.into());
+        //unsafe {
+        //    self.app_config.queue.write_buffer(
+        //        self.gscene
+        //            .get_global_transform_buffer()
+        //            .as_ref()
+        //            .unwrap_unchecked(),
+        //        0,
+        //        bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
+        //    );
+        //}
         Ok(())
     }
 

@@ -4,7 +4,7 @@ use cgmath::{InnerSpace, Vector3};
 use gltf::{animation::Channel, Node};
 
 use crate::model::animation::{
-    animation_controller::AnimationInstance,
+    animation::AnimationInstance,
     util::{
         get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
         IDENTITY, NO_ROTATION, NO_TRANSLATION,
