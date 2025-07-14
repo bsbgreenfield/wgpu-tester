@@ -6,17 +6,23 @@ use gltf::{animation::Channel, Node};
 use crate::model::animation::{
     animation::AnimationInstance,
     util::{
-        get_animation_times, get_animation_transforms, AnimationType, Interpolation, NodeType,
-        IDENTITY, NO_ROTATION, NO_TRANSLATION,
+        get_animation_times, get_animation_transforms, AnimationType, Interpolation, IDENTITY,
+        NO_ROTATION, NO_TRANSLATION,
     },
 };
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum NodeType {
+    Node,
+    Mesh,
+    Joint,
+}
 type ModelAnimationMap = HashMap<usize, Vec<AnimationSampler>>;
 pub struct AnimationNode {
     pub children: Vec<AnimationNode>,
     transform: cgmath::Matrix4<f32>,
     pub samplers: Option<ModelAnimationMap>,
-    node_type: NodeType,
+    pub node_type: NodeType,
     pub(super) node_id: usize,
 }
 impl AnimationNode {
@@ -40,29 +46,41 @@ impl AnimationNode {
             child_node.get_default_samples(animation_index, map);
         }
     }
-    pub(super) fn initialize_sampled_transforms(&self, transforms: &mut Vec<[[f32; 4]; 4]>) {
+    pub(super) fn initialize_sampled_transforms(
+        &self,
+        mesh_transforms: &mut Vec<[[f32; 4]; 4]>,
+        joint_transforms: &mut Vec<[[f32; 4]; 4]>,
+    ) {
         if self.node_type == NodeType::Mesh {
-            transforms.push(self.transform.into());
+            mesh_transforms.push(self.transform.into());
+        } else if self.node_type == NodeType::Joint {
+            joint_transforms.push(self.transform.into());
         }
         for child in self.children.iter() {
-            child.initialize_sampled_transforms(transforms);
+            child.initialize_sampled_transforms(mesh_transforms, joint_transforms);
         }
     }
 
-    pub fn attach_sampler_sets(&mut self, channels: &Vec<Channel>, is_animated: &mut bool) {
+    pub fn attach_sampler_sets(
+        &mut self,
+        channels: &Vec<Channel>,
+        is_animated: &mut bool,
+        buffer_offsets: &Vec<u64>,
+    ) -> bool {
         let relevant_channels: Vec<&Channel> = channels
             .iter()
             .filter(|c| c.target().node().index() == self.node_id)
             .collect();
         let maybe_samplers: Option<Vec<AnimationSampler>> =
-            AnimationSampler::from_channels(&relevant_channels);
+            AnimationSampler::from_channels(&relevant_channels, buffer_offsets);
         if let Some(samplers) = maybe_samplers {
             *is_animated = true;
             self.add_sampler_set(channels[0].animation().index(), samplers);
         }
         for node_child in self.children.iter_mut() {
-            node_child.attach_sampler_sets(channels, is_animated);
+            node_child.attach_sampler_sets(channels, is_animated, buffer_offsets);
         }
+        *is_animated // will be false only if there are no samplers for any for the nodes
     }
     pub(super) fn add_sampler_set(
         &mut self,
@@ -90,7 +108,8 @@ impl AnimationNode {
         &self,
         instance: &mut AnimationInstance<T>,
         base_translation: cgmath::Matrix4<f32>,
-        node_to_lt_index_map: &HashMap<usize, usize>,
+        mesh_to_lt_index_map: &HashMap<usize, usize>,
+        joint_to_joint_index_map: &HashMap<usize, usize>,
     ) -> bool {
         let mut node_is_done: bool = true;
 
@@ -118,6 +137,7 @@ impl AnimationNode {
 
                     match maybe_current_sample {
                         SampleResult::Active(current_sample) => {
+                            node_is_done = false;
                             if current_sample.transform_index == -1 {
                                 continue;
                             }
@@ -150,7 +170,6 @@ impl AnimationNode {
                             };
                             *instance.current_samples.get_mut(&sampler.id).unwrap() =
                                 Some(current_sample);
-                            node_is_done = false;
                         }
                         SampleResult::Done(last_index) => {
                             let transform = sampler.transforms[last_index];
@@ -183,18 +202,29 @@ impl AnimationNode {
                 );
             }
         }
+        match self.node_type {
+            NodeType::Mesh => {
+                instance.mesh_transforms[mesh_to_lt_index_map[&self.node_id]] = composed_transform
+                    .unwrap_or(base_translation * self.transform)
+                    .into();
+            }
+            NodeType::Joint => {
+                instance.joint_transforms[joint_to_joint_index_map[&self.node_id]] =
+                    composed_transform
+                        .unwrap_or(base_translation * self.transform)
+                        .into();
+            }
+            NodeType::Node => {}
+        }
         // apply the new transform to the base translation using the optional TRS components
         // assign the mesh transform to the proper slot for this instance
-        if self.node_type == NodeType::Mesh {
-            instance.node_transforms[node_to_lt_index_map[&self.node_id]] = composed_transform
-                .unwrap_or(base_translation * self.transform)
-                .into();
-        }
+        // if any one of the child nodes is still processing, set done to false
         for child_node in &self.children {
             if !child_node.update_node_transforms(
                 instance,
                 composed_transform.unwrap_or(base_translation * self.transform),
-                node_to_lt_index_map,
+                mesh_to_lt_index_map,
+                joint_to_joint_index_map,
             ) {
                 node_is_done = false;
             }
@@ -202,22 +232,35 @@ impl AnimationNode {
         node_is_done
     }
 
-    pub fn new(node: &Node, children: Vec<AnimationNode>) -> Self {
-        match node.mesh() {
-            Some(_) => AnimationNode {
-                children,
-                transform: cgmath::Matrix4::from(node.transform().matrix()),
-                samplers: None,
-                node_type: NodeType::Mesh,
-                node_id: node.index(),
-            },
+    pub fn new(node: &Node, children: Vec<AnimationNode>, joint_ids: &Vec<usize>) -> Self {
+        match joint_ids.binary_search(&node.index()) {
+            Ok(_) => {
+                println!("joint {}", node.index());
+                AnimationNode {
+                    children,
+                    samplers: None,
+                    transform: cgmath::Matrix4::from(node.transform().matrix()),
+                    node_type: NodeType::Joint,
+                    node_id: node.index(),
+                }
+            }
 
-            None => AnimationNode {
-                children,
-                transform: cgmath::Matrix4::from(node.transform().matrix()),
-                samplers: None,
-                node_type: NodeType::Node,
-                node_id: node.index(),
+            Err(_) => match node.mesh() {
+                Some(_) => AnimationNode {
+                    children,
+                    transform: cgmath::Matrix4::from(node.transform().matrix()),
+                    samplers: None,
+                    node_type: NodeType::Mesh,
+                    node_id: node.index(),
+                },
+
+                None => AnimationNode {
+                    children,
+                    transform: cgmath::Matrix4::from(node.transform().matrix()),
+                    samplers: None,
+                    node_type: NodeType::Node,
+                    node_id: node.index(),
+                },
             },
         }
     }
@@ -234,7 +277,7 @@ impl AnimationNode {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum SampleResult {
+pub(super) enum SampleResult {
     Active(AnimationSample),
     Done(usize),
 }
@@ -247,7 +290,7 @@ pub(super) struct AnimationSample {
 
 #[derive(Debug)]
 pub struct AnimationSampler {
-    id: usize,
+    pub(super) id: usize,
     pub animation_type: AnimationType,
     pub interpolation: Interpolation,
     /// the affected node
@@ -255,14 +298,17 @@ pub struct AnimationSampler {
     pub transforms: Vec<[f32; 4]>,
 }
 impl AnimationSampler {
-    pub fn from_channels(channels: &Vec<&Channel>) -> Option<Vec<Self>> {
+    pub fn from_channels(channels: &Vec<&Channel>, buffer_offsets: &Vec<u64>) -> Option<Vec<Self>> {
         let mut samplers: Vec<AnimationSampler> = Vec::new();
         for channel in channels.iter() {
             let animation_type = AnimationType::from_property(&channel.target().property());
             let interpolation = Interpolation::from(channel.sampler().interpolation());
-            let times = get_animation_times(&channel.sampler().input());
-            let transforms =
-                get_animation_transforms(&channel.sampler().output(), &channel.target().property());
+            let times = get_animation_times(&channel.sampler().input(), buffer_offsets);
+            let transforms = get_animation_transforms(
+                &channel.sampler().output(),
+                buffer_offsets,
+                &channel.target().property(),
+            );
             let sampler = AnimationSampler {
                 id: channel.sampler().index(),
                 animation_type,
@@ -279,7 +325,11 @@ impl AnimationSampler {
         }
     }
 
-    fn sample(&self, current_sample: AnimationSample, time_elapsed: Duration) -> SampleResult {
+    pub(super) fn sample(
+        &self,
+        current_sample: AnimationSample,
+        time_elapsed: Duration,
+    ) -> SampleResult {
         // if the current time elapsed has surpassed the threshold time for this sample
         // we need to calculate a new sample
         if time_elapsed.as_secs_f32() >= current_sample.end_time {

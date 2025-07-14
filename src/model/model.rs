@@ -1,15 +1,39 @@
 use super::util::GltfErrors;
-use crate::model::primitive::GPrimitive;
 use crate::model::vertex::ModelVertex;
+use crate::model::{animation::animation_node::AnimationNode, primitive::GPrimitive};
 use crate::scene::scene::GScene;
 use gltf::Mesh;
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::ops::{self, Range};
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AccessorDataType {
     U8,
     Vec3F32,
     U16,
+}
+
+pub struct ModelAnimationData {
+    pub animation_node: Rc<AnimationNode>,
+    pub mesh_animations: Vec<usize>,
+    pub model_index: usize,
+    pub animation_count: usize,
+    pub node_to_lt_index: HashMap<usize, usize>,
+    pub joint_to_joint_index: HashMap<usize, usize>,
+    pub joint_count: usize,
+}
+
+impl Debug for ModelAnimationData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Animation Data")
+            .field("model_index", &self.model_index)
+            .field("animation_count", &self.animation_count)
+            .field("node_to_lt_index", &self.node_to_lt_index)
+            .field("joint_to_joint_index", &self.joint_to_joint_index)
+            .finish()
+    }
 }
 
 // Maybe this entire folder should be moved inside of scene
@@ -19,13 +43,19 @@ pub enum AccessorDataType {
 pub struct GModel {
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
+    pub animation_data: Option<ModelAnimationData>,
 }
 
 impl GModel {
-    pub(super) fn new(meshes: Vec<GMesh>, mesh_instances: Vec<u32>) -> Self {
+    pub(super) fn new(
+        meshes: Vec<GMesh>,
+        mesh_instances: Vec<u32>,
+        animation_data: Option<ModelAnimationData>,
+    ) -> Self {
         Self {
             meshes,
             mesh_instances,
+            animation_data,
         }
     }
 

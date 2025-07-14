@@ -50,7 +50,7 @@ impl InstanceData {
     /// at the specified offset for y_matrix. y_matrix has exactly the same length as this region
     pub fn apply_animation_frame_unchecked(&mut self, animation_frame: AnimationFrame) {
         for (idx, offset) in animation_frame.lt_offsets.iter().enumerate() {
-            let t_slices = animation_frame.transform_slices[idx]; // y_matrix slice
+            let t_slices = animation_frame.mesh_transform_slices[idx]; // y_matrix slice
             unsafe {
                 // the model index stored in the first local transform at the provided offset
                 let model_id = self.local_transform_data.get_unchecked(*offset).model_index;
@@ -367,7 +367,8 @@ mod tests {
         //create the animation frame
         let animation_frame = AnimationFrame {
             lt_offsets: vec![3],
-            transform_slices: vec![&new_matrices[..]],
+            mesh_transform_slices: vec![&new_matrices[..]],
+            joint_transform_slices: vec![],
         };
 
         instance_data.apply_animation_frame_unchecked(animation_frame);

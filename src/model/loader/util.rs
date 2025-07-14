@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, ReadDir},
     path::PathBuf,
+    rc::Rc,
 };
 
 use base64::Engine;
@@ -9,9 +10,12 @@ use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
-    animation::{animation::SimpleAnimation, animation_node::AnimationNode},
+    animation::{
+        animation::SimpleAnimation,
+        animation_node::{AnimationNode, NodeType},
+    },
     loader::loader::GltfFileLoadError,
-    model::{GModel, LocalTransform},
+    model::{GModel, LocalTransform, ModelAnimationData},
     util::get_model_meshes,
 };
 
@@ -29,17 +33,19 @@ impl NodeData {
 }
 
 struct ModelMeshData {
-    joint_ids: Vec<u32>,
+    joint_ids: Vec<usize>,
     joint_pose_transforms: Vec<[[f32; 4]; 4]>,
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     mesh_transform_buckets: Vec<Vec<LocalTransform>>,
     node_to_lt_index_map: HashMap<usize, usize>,
+    joint_to_joint_index_map: HashMap<usize, usize>,
 }
 impl ModelMeshData {
     fn new() -> Self {
         Self {
             node_to_lt_index_map: HashMap::new(),
+            joint_to_joint_index_map: HashMap::new(),
             mesh_ids: Vec::new(),
             mesh_instances: Vec::new(),
             mesh_transform_buckets: Vec::new(),
@@ -88,12 +94,20 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(decoded)
 }
 
-fn build_animation_node_tree(node: &gltf::Node) -> AnimationNode {
+fn build_animation_node_tree(
+    node: &gltf::Node,
+    joint_ids: &Vec<usize>,
+    has_mesh: &mut bool,
+) -> AnimationNode {
     let children: Vec<AnimationNode> = node
         .children()
-        .map(|child| build_animation_node_tree(&child))
+        .map(|child| build_animation_node_tree(&child, joint_ids, has_mesh))
         .collect();
-    AnimationNode::new(node, children)
+    let node = AnimationNode::new(node, children, joint_ids);
+    if node.node_type == NodeType::Mesh {
+        *has_mesh = true;
+    }
+    node
 }
 
 pub(super) fn load_models_from_gltf<'a>(
@@ -102,11 +116,10 @@ pub(super) fn load_models_from_gltf<'a>(
     nodes: gltf::iter::Nodes<'a>,
     animations: &gltf::iter::Animations,
     buffers: &gltf::iter::Buffers,
-) -> (Vec<GModel>, Vec<LocalTransform>, Vec<SimpleAnimation>) {
+) -> (Vec<GModel>, Vec<LocalTransform>) {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
     let mut local_transform_data = Vec::<LocalTransform>::new();
-    let mut simple_animations: Vec<SimpleAnimation> = Vec::new();
     for rid in root_nodes_ids.iter() {
         let mut model_mesh_data = ModelMeshData::new();
 
@@ -123,28 +136,47 @@ pub(super) fn load_models_from_gltf<'a>(
             model_mesh_data,
             joint_ids,
         );
-        println!(" JOINTS: {:?}", model_mesh_data.joint_ids);
-        println!(" MESHES: {:?}", model_mesh_data.mesh_ids);
-        // get a animation node trees
-        let maybe_animation_node = load_animations(&root_node, animations);
-        // create a new SimpleAnimation
-        // models are indexed by the order in which they are aded to the scenes
-        // [models] field.
-        if let Some(animation_node) = maybe_animation_node {
-            simple_animations.push(SimpleAnimation::new(
-                animation_node,
-                models.len(),
-                model_mesh_data.node_to_lt_index_map,
-                model_mesh_data.joint_ids.len() > 0,
-            ));
-        }
+        println!("JOINTS: {:?}", model_mesh_data.joint_to_joint_index_map);
 
         let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
+        // get a animation node trees
+        let (maybe_animation_node, animation_count, mesh_animations) = load_animations(
+            &root_node,
+            animations,
+            &model_mesh_data.joint_ids,
+            &buffer_offsets,
+        );
+
         // instantiate meshes, instantiate model
         let meshes = get_model_meshes(&model_mesh_data.mesh_ids, &nodes, &buffer_offsets)
             .expect("meshes for this model");
         let mi_len = model_mesh_data.mesh_instances.len().clone();
-        let g_model = GModel::new(meshes, model_mesh_data.mesh_instances);
+        let gmodel_animation_data: Option<ModelAnimationData> = match maybe_animation_node {
+            Some(animation_node) => {
+                let joint_count = model_mesh_data.joint_to_joint_index_map.len().clone();
+                Some(ModelAnimationData {
+                    mesh_animations,
+                    animation_count,
+                    model_index: models.len(),
+                    animation_node: Rc::new(animation_node),
+                    node_to_lt_index: model_mesh_data.node_to_lt_index_map,
+                    joint_to_joint_index: model_mesh_data.joint_to_joint_index_map,
+                    joint_count,
+                })
+            }
+
+            None => None,
+        };
+        println!(
+            "ANIMATION DATA FOR MODEL {}: {:?}",
+            models.len(),
+            gmodel_animation_data,
+        );
+        let g_model = GModel::new(
+            meshes,
+            model_mesh_data.mesh_instances,
+            gmodel_animation_data,
+        );
 
         assert_eq!(model_mesh_data.mesh_ids.len(), mi_len,);
         assert_eq!(
@@ -159,7 +191,7 @@ pub(super) fn load_models_from_gltf<'a>(
 
         models.push(g_model);
     }
-    (models, local_transform_data, simple_animations)
+    (models, local_transform_data)
 }
 
 fn get_buffer_offsets(buffers: &gltf::iter::Buffers) -> Vec<u64> {
@@ -178,21 +210,32 @@ fn get_buffer_offsets(buffers: &gltf::iter::Buffers) -> Vec<u64> {
 fn load_animations(
     root_node: &gltf::Node,
     animations: &gltf::iter::Animations,
-) -> Option<AnimationNode> {
-    let mut animation_node = build_animation_node_tree(root_node);
+    joint_ids: &Vec<usize>,
+    buffer_offsets: &Vec<u64>,
+) -> (Option<AnimationNode>, usize, Vec<usize>) {
+    let mut animation_count = 0;
+    let mut has_mesh = false;
+    let mut mesh_animations: Vec<usize> = Vec::new();
+    let mut animation_node = build_animation_node_tree(root_node, joint_ids, &mut has_mesh);
     let mut is_animated = false;
     for animation in animations.clone().into_iter() {
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
-        animation_node.attach_sampler_sets(&channels, &mut is_animated);
+        if animation_node.attach_sampler_sets(&channels, &mut is_animated, buffer_offsets) {
+            animation_count += 1;
+        }
+        if has_mesh && is_animated {
+            mesh_animations.push(animation_count - 1);
+            has_mesh = false;
+        }
     }
     // the model represented by the root node is considered animated if,
     // for any of the gltf animations, at least one of the nodes in its tree
     // has an associated channel
     // if not animated, the AnimationNode can be discarded
     if is_animated {
-        return Some(animation_node);
+        return (Some(animation_node), animation_count, mesh_animations);
     } else {
-        return None;
+        return (None, 0, mesh_animations);
     }
 }
 
@@ -239,7 +282,10 @@ fn find_model_meshes(
     } else {
         match joint_ids.binary_search(&root_node.index()) {
             Ok(_) => {
-                model_mesh_data.joint_ids.push(root_node.index() as u32);
+                model_mesh_data
+                    .joint_to_joint_index_map
+                    .insert(root_node.index(), model_mesh_data.joint_ids.len());
+                model_mesh_data.joint_ids.push(root_node.index());
                 model_mesh_data.joint_pose_transforms.push(new_trans.into());
             }
             Err(_) => {}

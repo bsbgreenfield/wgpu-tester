@@ -69,7 +69,5 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene(app_config: &AppConfig, aspect_ratio: f32) -> GScene {
-    BOX_ANIMATED
-        .create(&app_config.device, aspect_ratio)
-        .unwrap()
+    FLEXY_BOX.create(&app_config.device, aspect_ratio).unwrap()
 }

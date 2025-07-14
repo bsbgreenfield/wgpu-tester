@@ -1,3 +1,4 @@
+use core::fmt;
 use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
@@ -30,14 +31,19 @@ impl GScene {
         instance_idx: usize,
         animation_index: usize,
     ) {
-        let ( offset, len ) = self
-            .instance_data
-            .get_instance_local_offset(instance_idx, model_id);
+        let animation_data = self.models[model_id].animation_data.as_ref().expect(format!("The given model {} has no animations!", model_id).as_str());
+        let offset_count = if self.models[model_id].animation_data.as_ref().unwrap().mesh_animations.contains(&animation_index) {
+             self.instance_data.get_instance_local_offset(instance_idx, model_id)
+        } else {
+            (0 as usize,0 as usize) 
+        };
+       
         self.animation_controller
-            .initialize_animation(animation_index, offset, len);
+            .initialize_animation(animation_data, animation_index, offset_count.0, offset_count.1, self.models[model_id].animation_data.as_ref().unwrap().joint_count);
     }
+
     pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
-        let maybe_animation_frame = self.animation_controller.do_animations(timestamp);
+        let maybe_animation_frame = self.animation_controller.do_animations(timestamp, &self.models);
         match maybe_animation_frame {
             Some(animation_frame) => {
                 self.instance_data
@@ -48,6 +54,7 @@ impl GScene {
             None => return false,
         }
     }
+
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);
         self.index_data.init(device);
@@ -144,7 +151,6 @@ pub struct GSceneData {
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
-    simple_animations: Vec<SimpleAnimation>,
 }
 
 impl GSceneData {
@@ -164,7 +170,7 @@ impl GSceneData {
             InstanceData::from_scaffold(scaffold, self.local_transforms, &self.models)?;
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
-        let animation_controller = SceneAnimationController::new(self.simple_animations);
+        let animation_controller = SceneAnimationController::new(self.models.len());
         let mut scene = GScene {
             animation_controller,
             models: self.models,
@@ -180,7 +186,7 @@ impl GSceneData {
         let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
-        let animation_controller = SceneAnimationController::new(self.simple_animations);
+        let animation_controller = SceneAnimationController::new(self.models.len());
 
         GScene {
             models: self.models,
@@ -199,15 +205,13 @@ impl GSceneData {
             Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
         let index_vec =
             Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
-        let simple_animations =
-            get_scene_animation_data(gltf_data.simple_animations, &gltf_data.binary_data);
+            get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
 
         Self {
             models: gltf_data.models,
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,
-            simple_animations,
         }
     }
 

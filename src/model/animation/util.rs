@@ -37,6 +37,11 @@ pub(super) fn copy_data_for_animation(
                     _ => todo!("havent implemented this type of animation yet (scale?)"),
                 }
                 sampler.times = times_slice.to_vec();
+                assert_eq!(
+                    sampler.times.len(),
+                    sampler.transforms.len(),
+                    "There should be an equal number of keyframe times as transforms"
+                );
             }
         }
     }
@@ -44,15 +49,21 @@ pub(super) fn copy_data_for_animation(
         copy_data_for_animation(child_node, model_id, main_buffer_data);
     }
 }
-pub(super) fn get_animation_times(times_accessor: &gltf::Accessor) -> (usize, usize) {
+pub(super) fn get_animation_times(
+    times_accessor: &gltf::Accessor,
+    buffer_offsets: &Vec<u64>,
+) -> (usize, usize) {
     assert_eq!(times_accessor.data_type(), DataType::F32);
+    let buffer_view = times_accessor.view().unwrap();
+    let buffer_offset = buffer_offsets[buffer_view.buffer().index()] as usize;
     let length = times_accessor.count() * 4;
-    let offset = times_accessor.offset() + (times_accessor.view().unwrap().offset());
+    let offset = times_accessor.offset() + (buffer_view.offset()) + buffer_offset;
     (offset, length)
 }
 
 pub(super) fn get_animation_transforms(
     transforms_accessor: &gltf::Accessor,
+    buffer_offsets: &Vec<u64>,
     animation_type: &gltf::animation::Property,
 ) -> (usize, usize) {
     assert_eq!(transforms_accessor.data_type(), DataType::F32);
@@ -63,8 +74,10 @@ pub(super) fn get_animation_transforms(
         // be 123 bytes of data
         _ => todo!("havent implemented scale or morph yet"),
     };
+    let buffer_view = transforms_accessor.view().unwrap();
+    let buffer_offset = buffer_offsets[buffer_view.buffer().index()] as usize;
 
-    let offset = transforms_accessor.offset() + (transforms_accessor.view().unwrap().offset());
+    let offset = transforms_accessor.offset() + (buffer_view.offset()) + buffer_offset;
     (offset, length)
 }
 #[derive(Debug, Clone, Copy)]
@@ -106,9 +119,4 @@ impl From<gltf::animation::Interpolation> for Interpolation {
             _ => todo!(),
         }
     }
-}
-#[derive(Debug, PartialEq, Eq)]
-pub enum NodeType {
-    Node,
-    Mesh,
 }

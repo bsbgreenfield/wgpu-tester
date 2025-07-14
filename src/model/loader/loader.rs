@@ -48,7 +48,7 @@ impl GltfLoader {
             }
         }
         let nodes = gltf.nodes();
-        let (models, local_transforms, simple_animations) = load_models_from_gltf(
+        let (models, local_transforms) = load_models_from_gltf(
             root_node_ids,
             &joint_ids,
             nodes,
@@ -59,7 +59,6 @@ impl GltfLoader {
             models,
             binary_data,
             local_transforms,
-            simple_animations,
         };
 
         Ok(gltf_data)
@@ -70,7 +69,6 @@ pub struct GltfData {
     pub models: Vec<GModel>,
     pub binary_data: Vec<u8>,
     pub local_transforms: Vec<LocalTransform>,
-    pub simple_animations: Vec<SimpleAnimation>,
 }
 
 #[derive(Debug)]

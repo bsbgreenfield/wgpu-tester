@@ -4,29 +4,48 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use crate::model::animation::{
-    animation::*,
-    animation_node::{AnimationNode, AnimationSample},
-    util::copy_data_for_animation,
+use crate::{
+    model::{
+        animation::{
+            animation::*,
+            animation_node::{AnimationNode, AnimationSample},
+            util::copy_data_for_animation,
+        },
+        model::{GModel, ModelAnimationData},
+    },
+    transforms,
 };
+
+pub fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec<u8>) {
+    for (idx, model) in models.iter_mut().enumerate() {
+        if let Some(animation_data) = model.animation_data.as_mut() {
+            let exclusive_node_reference: &mut AnimationNode =
+                Rc::get_mut(&mut animation_data.animation_node)
+                    .expect("should be an exclusive reference");
+            copy_data_for_animation(exclusive_node_reference, idx, main_buffer_data);
+            exclusive_node_reference.print();
+        }
+    }
+}
+
 /// for each mdoel with one or more animation nodes, extract the times and translations data
 /// from the main blob and put them in the relevant samplers.
-pub fn get_scene_animation_data(
-    mut simple_animations: Vec<SimpleAnimation>,
-    main_buffer_data: &Vec<u8>,
-) -> Vec<SimpleAnimation> {
-    for animation in simple_animations.iter_mut() {
-        let exclusive_node_reference: &mut AnimationNode =
-            Rc::get_mut(&mut animation.animation_node)
-                .expect("this should be the only reference to the node");
-        copy_data_for_animation(
-            exclusive_node_reference,
-            animation.model_id,
-            main_buffer_data,
-        );
-    }
-    simple_animations
-}
+//pub fn get_scene_animation_data(
+//    mut simple_animations: Vec<SimpleAnimation>,
+//    main_buffer_data: &Vec<u8>,
+//) -> Vec<SimpleAnimation> {
+//    for animation in simple_animations.iter_mut() {
+//        let exclusive_node_reference: &mut AnimationNode =
+//            Rc::get_mut(&mut animation.animation_node)
+//                .expect("this should be the only reference to the node");
+//        copy_data_for_animation(
+//            exclusive_node_reference,
+//            animation.model_id,
+//            main_buffer_data,
+//        );
+//    }
+//    simple_animations
+//}
 
 /// Keeps track of which animations are currently playing.
 /// The controllers functions are
@@ -36,83 +55,117 @@ pub fn get_scene_animation_data(
 pub struct SceneAnimationController {
     dead_animations: Vec<usize>,
     pub(super) active_animations: Vec<VecDeque<GAnimationInstance>>,
-    pub(super) animations: Vec<SimpleAnimation>,
+    pub(super) active_animation_count: usize,
 }
 
 impl SceneAnimationController {
-    pub fn new(animations: Vec<SimpleAnimation>) -> Self {
-        let mut active_animations = Vec::with_capacity(animations.len());
-        for _ in 0..animations.len() {
+    pub fn new(model_no: usize) -> Self {
+        let mut active_animations = Vec::with_capacity(model_no);
+        for _ in 0..model_no {
             active_animations.push(VecDeque::with_capacity(10));
         }
         Self {
-            dead_animations: vec![0; animations.len()],
+            dead_animations: vec![0; model_no],
             active_animations,
-            animations,
+            active_animation_count: 0,
         }
     }
 
     pub fn initialize_animation(
         &mut self,
+        animation_data: &ModelAnimationData,
         animation_index: usize,
         model_instance_offset: usize,
         model_mesh_instance_count: usize,
+        model_joint_instance_count: usize,
     ) {
-        // clone a shared reference to the animation node tree
-        let animation_node = self.animations[animation_index].animation_node.clone();
-        // get copies of the initial state of the animated nodes
-        let mut node_transforms: Vec<[[f32; 4]; 4]> = Vec::with_capacity(model_mesh_instance_count);
+        let animation_node = animation_data.animation_node.clone();
+        let mut mesh_transforms: Vec<[[f32; 4]; 4]> = Vec::with_capacity(model_mesh_instance_count);
+        let mut joint_transforms: Vec<[[f32; 4]; 4]> =
+            Vec::with_capacity(model_joint_instance_count);
         let mut sample_map = HashMap::<usize, Option<AnimationSample>>::new();
-        let _ = &animation_node.get_default_samples(animation_index, &mut sample_map);
-        let _ = &animation_node.initialize_sampled_transforms(&mut node_transforms);
+        animation_node.get_default_samples(animation_index, &mut sample_map);
+        animation_node.initialize_sampled_transforms(&mut mesh_transforms, &mut joint_transforms);
+        println!("Joint transforms: {:?}", joint_transforms);
+        println!("Mesh transforms: {:?}", mesh_transforms);
+
         let start_time = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap();
-        let animation_instance = if self.animations[animation_index].is_joint_animation {
-            todo!();
-        } else {
-            GAnimationInstance::new_mesh_animation(
-                animation_node,
-                model_instance_offset,
-                start_time,
-                Duration::ZERO,
-                animation_index,
-                node_transforms,
-                sample_map,
-            )
-        };
-        self.active_animations[animation_index].push_back(animation_instance);
+
+        let animation_instance = GAnimationInstance::new_mesh_animation(
+            animation_node,
+            model_instance_offset,
+            start_time,
+            Duration::ZERO,
+            animation_index,
+            mesh_transforms,
+            joint_transforms,
+            sample_map,
+        );
+        self.active_animations[animation_data.model_index].push_back(animation_instance);
+        self.active_animation_count += 1;
     }
 
-    pub fn do_animations<'a>(&'a mut self, timestamp: Duration) -> Option<AnimationFrame<'a>> {
+    pub fn do_animations<'a>(
+        &'a mut self,
+        timestamp: Duration,
+        models: &Vec<GModel>,
+    ) -> Option<AnimationFrame<'a>> {
+        // process any animations that were marked as done last frame
         for (idx, dead_animation_count) in self.dead_animations.iter_mut().enumerate() {
             let count = dead_animation_count.clone();
             for _ in 0..count {
                 self.active_animations[idx].pop_front();
                 *dead_animation_count -= 1;
+                self.active_animation_count -= 1;
             }
         }
-        let len = self.active_animations.len();
-        if len == 0 {
+
+        // if there are no active animations, do nothing
+        if self.active_animation_count == 0 {
             return None;
         }
+        let len = self.active_animations.len();
 
         let mut frame = AnimationFrame {
-            transform_slices: Vec::with_capacity(len),
+            mesh_transform_slices: Vec::with_capacity(len),
+            joint_transform_slices: Vec::with_capacity(len),
             lt_offsets: Vec::with_capacity(len),
         };
-        for (idx, animation_bucket) in self.active_animations.iter_mut().enumerate() {
-            let map = &self.animations[idx].node_to_lt_index_map;
-            for animation_instance in animation_bucket.iter_mut() {
-                let offset = animation_instance.get_model_instance_offset();
-                frame.lt_offsets.push(offset);
-                let (transforms, done) = animation_instance.process_animation_frame(timestamp, map);
-                frame.transform_slices.push(transforms);
-                if done {
+
+        for (idx, bucket) in self.active_animations.iter_mut().enumerate() {
+            if bucket.len() == 0 {
+                continue;
+            }
+            let mesh_map = &models[idx]
+                .animation_data
+                .as_ref()
+                .unwrap()
+                .node_to_lt_index;
+            let joint_map = &models[idx]
+                .animation_data
+                .as_ref()
+                .unwrap()
+                .joint_to_joint_index;
+            for animation_instance in bucket.iter_mut() {
+                frame
+                    .lt_offsets
+                    .push(animation_instance.get_model_instance_offset());
+                let animation_processing_result =
+                    animation_instance.process_animation_frame(timestamp, mesh_map, joint_map);
+                frame
+                    .mesh_transform_slices
+                    .push(animation_processing_result.mesh_transforms);
+                frame
+                    .joint_transform_slices
+                    .push(animation_processing_result.joint_transforms);
+                if animation_processing_result.is_done {
                     self.dead_animations[idx] += 1;
                 }
             }
         }
+        println!("JOINT TRANSFORMS: {:?}", frame.joint_transform_slices);
         Some(frame)
     }
 }
