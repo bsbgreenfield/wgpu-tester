@@ -1,14 +1,16 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
+  @location(2) joints: vec4<u32>,
+  @location(3) weights: vec4<u32>,
 }
 
 struct InstanceInput {
-  @location(3) obj_matrix_0: vec4<f32>,
-  @location(4) obj_matrix_1: vec4<f32>,
-  @location(5) obj_matrix_2: vec4<f32>,
-  @location(6) obj_matrix_3: vec4<f32>,
-  @location(7) model_index: u32,
+  @location(5) obj_matrix_0: vec4<f32>,
+  @location(6) obj_matrix_1: vec4<f32>,
+  @location(7) obj_matrix_2: vec4<f32>,
+  @location(8) obj_matrix_3: vec4<f32>,
+  @location(9) model_index: u32,
 }
 
 

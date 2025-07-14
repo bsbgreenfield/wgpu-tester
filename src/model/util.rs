@@ -1,5 +1,8 @@
 use crate::model::model::GMesh;
-use gltf::Accessor;
+use gltf::{
+    accessor::{DataType, Dimensions},
+    Accessor,
+};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -18,10 +21,14 @@ pub enum InitializationError {
     SceneMergeError(Box<String>),
     SceneInitializationError,
 }
+
+#[derive(PartialEq)]
 pub enum AttributeType {
     Position,
     Normal,
     Index,
+    Joints,
+    Weights,
 }
 
 pub(super) fn get_primitive_data(
@@ -31,11 +38,27 @@ pub(super) fn get_primitive_data(
 ) -> Result<Option<(u32, u32)>, GltfErrors> {
     match maybe_accessor {
         Some(accessor) => {
-            let byte_size = accessor.size();
+            let byte_size = match accessor.data_type() {
+                DataType::U16 => 2,
+                DataType::F32 => 4,
+                DataType::U8 => 1,
+                _ => todo!(),
+            };
+            let num_elements = match accessor.dimensions() {
+                Dimensions::Scalar => 1,
+                Dimensions::Vec2 => 2,
+                Dimensions::Vec3 => 3,
+                Dimensions::Vec4 => 4,
+                _ => todo!(),
+            };
+            let length = byte_size * num_elements * accessor.count();
             let buffer_view = accessor.view().ok_or(GltfErrors::NoView)?;
             let buffer_offset = buffer_offsets[buffer_view.buffer().index()];
             let offset = buffer_view.offset() + accessor.offset() + buffer_offset as usize;
-            return Ok(Some((offset as u32, (accessor.count() * byte_size) as u32)));
+            if _attribute_type == AttributeType::Joints {
+                println!("len: {:?}", length);
+            }
+            return Ok(Some((offset as u32, length as u32)));
         }
         None => Ok(None),
     }

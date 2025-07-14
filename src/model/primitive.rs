@@ -17,6 +17,10 @@ pub(super) struct GPrimitive {
     pub indices_length: u32,
     pub initialized_vertex_offset_len: Option<(u32, u32)>,
     pub initialized_index_offset_len: Option<(u32, u32)>,
+    joints_offset: u32,
+    joints_length: u32,
+    weights_offset: u32,
+    weights_length: u32,
 }
 
 impl GPrimitive {
@@ -34,6 +38,20 @@ impl GPrimitive {
             None => (gltf::Semantic::Normals, None),
         };
         let indices_accessor = primitive.indices();
+        let (_, joints0_accessor) = match primitive
+            .attributes()
+            .find(|a| a.0 == gltf::Semantic::Joints(0))
+        {
+            Some(joints) => (joints.0, Some(joints.1)),
+            None => (gltf::Semantic::Joints(0), None),
+        };
+        let (_, weights_accessor) = match primitive
+            .attributes()
+            .find(|a| a.0 == gltf::Semantic::Weights(0))
+        {
+            Some(weights) => (weights.0, Some(weights.1)),
+            None => (gltf::Semantic::Weights(0), None),
+        };
 
         let (position_offset, position_length) = get_primitive_data(
             Some(&position_accessor),
@@ -55,6 +73,20 @@ impl GPrimitive {
             buffer_offsets,
         )?
         .unwrap_or((0, 0));
+
+        let (joints_offset, joints_length) = get_primitive_data(
+            joints0_accessor.as_ref(),
+            AttributeType::Joints,
+            buffer_offsets,
+        )?
+        .unwrap_or((0, 0));
+
+        let (weights_offset, weights_length) = get_primitive_data(
+            weights_accessor.as_ref(),
+            AttributeType::Weights,
+            buffer_offsets,
+        )?
+        .unwrap_or((0, 0));
         Ok(Self {
             position_offset,
             position_length,
@@ -64,29 +96,68 @@ impl GPrimitive {
             indices_length,
             initialized_vertex_offset_len: None,
             initialized_index_offset_len: None,
+            joints_offset,
+            joints_length,
+            weights_offset,
+            weights_length,
         })
     }
     pub(super) fn get_vertex_data(&self, main_buffer_data: &Vec<u8>) -> Vec<ModelVertex> {
         let position_bytes = &main_buffer_data
             [self.position_offset as usize..(self.position_offset + self.position_length) as usize];
         let position_f32: &[f32] = bytemuck::cast_slice(position_bytes);
-        if self.normal_length == 0 {
-            let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
-                .map(|i| ModelVertex::new(position_f32[i * 3..i * 3 + 3].try_into().unwrap()))
-                .collect();
-            return vertex_vec;
-        }
         let normal_bytes = &main_buffer_data
             [self.normal_offset as usize..(self.normal_offset + self.normal_length) as usize];
         let normals_f32: &[f32] = bytemuck::cast_slice(normal_bytes);
-        assert_eq!(normals_f32.len(), position_f32.len());
+        let joints_bytes = &main_buffer_data
+            [self.joints_offset as usize..(self.joints_offset + self.joints_length) as usize];
+        println!("{joints_bytes:?}");
+        let weights_bytes = &main_buffer_data
+            [self.weights_offset as usize..(self.weights_offset + self.weights_length) as usize];
+        let normalized_weights =
+            Self::normalize_f32_to_u8(bytemuck::cast_slice(weights_bytes).to_vec());
+        if normals_f32.len() > 0 {
+            assert_eq!(normals_f32.len(), position_f32.len());
+        }
         let vertex_vec: Vec<ModelVertex> = (0..(position_f32.len() / 3))
-            .map(|i| ModelVertex {
-                position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
-                normal: normals_f32[i * 3..i * 3 + 3].try_into().unwrap(),
+            .map(|i| {
+                return ModelVertex {
+                    position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
+                    normal: if normals_f32.len() > 0 {
+                        normals_f32[i * 3..i * 3 + 3].try_into().unwrap()
+                    } else {
+                        [0.0, 0.0, 0.0]
+                    },
+                    joints: if joints_bytes.len() > 0 {
+                        let j = joints_bytes[i * 4..i * 4 + 4].try_into().unwrap();
+                        println!("joints: {:?}", j);
+                        j
+                    } else {
+                        println!("joints: {:?}", [0, 0, 0, 0]);
+                        [0, 0, 0, 0]
+                    },
+                    weights: if normalized_weights.len() > 0 {
+                        let w = normalized_weights[i * 4..i * 4 + 4].try_into().unwrap();
+                        println!("weights: {:?}", w);
+                        w
+                    } else {
+                        println!("weights: {:?}", [0, 0, 0, 0]);
+                        [0, 0, 0, 0]
+                    },
+                };
             })
             .collect();
+
         vertex_vec
+    }
+    fn normalize_f32_to_u8(input: Vec<f32>) -> Vec<u8> {
+        input
+            .into_iter()
+            .map(|x| {
+                let scaled = (x * 255.0).round();
+                scaled.clamp(0.0, 255.0) as u8
+            })
+            .collect()
     }
     pub(super) fn get_index_data(
         main_buffer_data: &Vec<u8>,

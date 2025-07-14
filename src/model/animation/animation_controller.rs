@@ -23,7 +23,6 @@ pub fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec
                 Rc::get_mut(&mut animation_data.animation_node)
                     .expect("should be an exclusive reference");
             copy_data_for_animation(exclusive_node_reference, idx, main_buffer_data);
-            exclusive_node_reference.print();
         }
     }
 }

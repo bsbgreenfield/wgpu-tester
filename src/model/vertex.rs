@@ -5,12 +5,16 @@ use wgpu::VertexBufferLayout;
 pub struct ModelVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
+    pub joints: [u8; 4],
+    pub weights: [u8; 4],
 }
 impl ModelVertex {
     pub const fn new(position: &[f32; 3]) -> Self {
         Self {
             position: *position,
             normal: [0.0, 0.0, 0.0],
+            joints: [0, 0, 0, 0],
+            weights: [0, 0, 0, 0],
         }
     }
 }
@@ -35,6 +39,16 @@ impl Vertex for ModelVertex {
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 6]>() as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Uint8x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 7]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Uint8x4,
                 },
             ],
         }
