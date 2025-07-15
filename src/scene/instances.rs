@@ -24,6 +24,8 @@ pub(super) struct InstanceData {
     /// [instance_local_offsets[model_idx] .. (instance_local_offsets[model_idx] +
     /// model.mesh_instance_count * model_instances[model_idx])]
     model_instances_local_offsets: Vec<usize>,
+    pub joint_global_transforms: Vec<[[f32; 4]; 4]>,
+    pub joint_transform_buffer: Option<wgpu::Buffer>,
 }
 
 impl InstanceData {
@@ -68,11 +70,20 @@ impl InstanceData {
                 }
             }
         }
+        unsafe {
+            for (slice_index, joint_indices) in animation_frame.joint_ids.iter().enumerate() {
+                for (i, joint_index) in joint_indices.iter().enumerate() {
+                    self.joint_global_transforms[*joint_index] =
+                        animation_frame.joint_transform_slices[slice_index][i];
+                }
+            }
+        }
     }
     /// create Instance data with one instance of each model, each positioned at the origin
     pub fn default_from_scene(
         models: &Vec<GModel>,
         local_transform_data: Vec<LocalTransform>,
+        joint_transforms: Vec<[[f32; 4]; 4]>,
     ) -> Self {
         // one instance of each model
         let model_instances: Vec<usize> = (0..models.len()).into_iter().map(|_| 1).collect();
@@ -99,12 +110,15 @@ impl InstanceData {
             global_transform_buffer: None,
             global_transform_data,
             model_instances_local_offsets,
+            joint_global_transforms: joint_transforms,
+            joint_transform_buffer: None,
         }
     }
 
     pub fn from_scaffold(
         scaffold: &SceneScaffold,
         local_transform_data: Vec<LocalTransform>,
+        joint_transforms: Vec<[[f32; 4]; 4]>,
         models: &Vec<GModel>,
     ) -> Result<Self, InitializationError> {
         let mut model_instances = Vec::new();
@@ -138,6 +152,8 @@ impl InstanceData {
             global_transform_buffer: None,
             global_transform_data,
             model_instances_local_offsets,
+            joint_global_transforms: joint_transforms,
+            joint_transform_buffer: None,
         };
 
         // add the additional instances
@@ -319,6 +335,8 @@ impl InstanceData {
             global_transform_data,
             local_transform_buffer,
             global_transform_buffer,
+            joint_global_transforms: todo!(),
+            joint_transform_buffer: todo!(),
         }
     }
 }
@@ -362,6 +380,8 @@ mod tests {
             local_transform_data: instance_data_local_transforms,
             global_transform_buffer: None,
             global_transform_data: vec![],
+            joint_global_transforms: vec![],
+            joint_transform_buffer: None,
         };
 
         //create the animation frame
@@ -369,6 +389,7 @@ mod tests {
             lt_offsets: vec![3],
             mesh_transform_slices: vec![&new_matrices[..]],
             joint_transform_slices: vec![],
+            joint_ids: vec![],
         };
 
         instance_data.apply_animation_frame_unchecked(animation_frame);

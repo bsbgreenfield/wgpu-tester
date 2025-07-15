@@ -109,7 +109,7 @@ impl SceneAnimationController {
     pub fn do_animations<'a>(
         &'a mut self,
         timestamp: Duration,
-        models: &Vec<GModel>,
+        models: &'a Vec<GModel>,
     ) -> Option<AnimationFrame<'a>> {
         // process any animations that were marked as done last frame
         for (idx, dead_animation_count) in self.dead_animations.iter_mut().enumerate() {
@@ -130,6 +130,7 @@ impl SceneAnimationController {
         let mut frame = AnimationFrame {
             mesh_transform_slices: Vec::with_capacity(len),
             joint_transform_slices: Vec::with_capacity(len),
+            joint_ids: Vec::new(),
             lt_offsets: Vec::with_capacity(len),
         };
 
@@ -137,34 +138,27 @@ impl SceneAnimationController {
             if bucket.len() == 0 {
                 continue;
             }
-            let mesh_map = &models[idx]
-                .animation_data
-                .as_ref()
-                .unwrap()
-                .node_to_lt_index;
-            let joint_map = &models[idx]
-                .animation_data
-                .as_ref()
-                .unwrap()
-                .joint_to_joint_index;
+            let animation_data = &models[idx].animation_data.as_ref().unwrap();
             for animation_instance in bucket.iter_mut() {
                 frame
                     .lt_offsets
                     .push(animation_instance.get_model_instance_offset());
                 let animation_processing_result =
-                    animation_instance.process_animation_frame(timestamp, mesh_map, joint_map);
+                    animation_instance.process_animation_frame(timestamp, animation_data);
                 frame
                     .mesh_transform_slices
                     .push(animation_processing_result.mesh_transforms);
                 frame
                     .joint_transform_slices
                     .push(animation_processing_result.joint_transforms);
+                frame
+                    .joint_ids
+                    .push(animation_processing_result.joint_indices);
                 if animation_processing_result.is_done {
                     self.dead_animations[idx] += 1;
                 }
             }
         }
-        println!("JOINT TRANSFORMS: {:?}", frame.joint_transform_slices);
         Some(frame)
     }
 }

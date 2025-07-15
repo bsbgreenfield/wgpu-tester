@@ -3,12 +3,15 @@ use std::{collections::HashMap, time::Duration};
 use cgmath::{InnerSpace, Vector3};
 use gltf::{animation::Channel, Node};
 
-use crate::model::animation::{
-    animation::AnimationInstance,
-    util::{
-        get_animation_times, get_animation_transforms, AnimationType, Interpolation, IDENTITY,
-        NO_ROTATION, NO_TRANSLATION,
+use crate::model::{
+    animation::{
+        animation::AnimationInstance,
+        util::{
+            get_animation_times, get_animation_transforms, AnimationType, Interpolation, IDENTITY,
+            NO_ROTATION, NO_TRANSLATION,
+        },
     },
+    model::ModelAnimationData,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -71,8 +74,15 @@ impl AnimationNode {
             .iter()
             .filter(|c| c.target().node().index() == self.node_id)
             .collect();
+        println!("node_id: {:?}", self.node_id);
+        if relevant_channels.len() > 0 {
+            for c in relevant_channels.iter() {
+                println!("CHANNEL TARGET: {:?}", c.target().node().index());
+            }
+        }
         let maybe_samplers: Option<Vec<AnimationSampler>> =
             AnimationSampler::from_channels(&relevant_channels, buffer_offsets);
+        println!("maybe samplers: {:?}", maybe_samplers);
         if let Some(samplers) = maybe_samplers {
             *is_animated = true;
             self.add_sampler_set(channels[0].animation().index(), samplers);
@@ -108,8 +118,7 @@ impl AnimationNode {
         &self,
         instance: &mut AnimationInstance<T>,
         base_translation: cgmath::Matrix4<f32>,
-        mesh_to_lt_index_map: &HashMap<usize, usize>,
-        joint_to_joint_index_map: &HashMap<usize, usize>,
+        animation_data: &ModelAnimationData,
     ) -> bool {
         let mut node_is_done: bool = true;
 
@@ -204,15 +213,22 @@ impl AnimationNode {
         }
         match self.node_type {
             NodeType::Mesh => {
-                instance.mesh_transforms[mesh_to_lt_index_map[&self.node_id]] = composed_transform
-                    .unwrap_or(base_translation * self.transform)
-                    .into();
-            }
-            NodeType::Joint => {
-                instance.joint_transforms[joint_to_joint_index_map[&self.node_id]] =
+                instance.mesh_transforms[animation_data.node_to_lt_index[&self.node_id]] =
                     composed_transform
                         .unwrap_or(base_translation * self.transform)
                         .into();
+            }
+            NodeType::Joint => {
+                let local_joint_transform =
+                    composed_transform.unwrap_or(base_translation * self.transform);
+                let inverse_bind_matrix: cgmath::Matrix4<f32> = animation_data
+                    .joint_ibms
+                    .as_ref()
+                    .expect("should be joint ibms")
+                    [animation_data.joint_to_joint_index[&self.node_id]]
+                    .into();
+                instance.joint_transforms[animation_data.joint_to_joint_index[&self.node_id]] =
+                    (local_joint_transform * inverse_bind_matrix).into();
             }
             NodeType::Node => {}
         }
@@ -223,8 +239,7 @@ impl AnimationNode {
             if !child_node.update_node_transforms(
                 instance,
                 composed_transform.unwrap_or(base_translation * self.transform),
-                mesh_to_lt_index_map,
-                joint_to_joint_index_map,
+                animation_data,
             ) {
                 node_is_done = false;
             }

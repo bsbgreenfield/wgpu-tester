@@ -23,6 +23,8 @@ pub struct ModelAnimationData {
     pub node_to_lt_index: HashMap<usize, usize>,
     pub joint_to_joint_index: HashMap<usize, usize>,
     pub joint_count: usize,
+    pub joint_ibms: Option<Vec<[[f32; 4]; 4]>>,
+    pub joint_indices: Vec<usize>,
 }
 
 impl Debug for ModelAnimationData {
@@ -47,6 +49,12 @@ pub struct GModel {
 }
 
 impl GModel {
+    pub fn print_model(&self) {
+        println!("Model: ");
+        println!("       Meshes: {:?}", self.meshes);
+        println!("       Animations: {:?}", self.animation_data);
+        println!("---------------------------------------------");
+    }
     pub(super) fn new(
         meshes: Vec<GMesh>,
         mesh_instances: Vec<u32>,
@@ -80,8 +88,8 @@ impl GModel {
     pub fn build_range_vec(&self, range_vec: &mut Vec<std::ops::Range<usize>>) {
         for mesh in self.meshes.iter() {
             for primitive in mesh.primitives.iter() {
-                let primitive_range = primitive.indices_offset as usize
-                    ..(primitive.indices_offset + primitive.indices_length) as usize;
+                let offset_len = primitive.indices_offset_len.unwrap_or((0, 0));
+                let primitive_range = offset_len.0 as usize..(offset_len.0 + offset_len.1) as usize;
                 crate::model::range_splicer::define_index_ranges(range_vec, &primitive_range);
             }
         }

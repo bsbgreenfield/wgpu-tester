@@ -1,4 +1,5 @@
 use crate::model::model::GMesh;
+use bytemuck::AnyBitPattern;
 use gltf::{
     accessor::{DataType, Dimensions},
     Accessor,
@@ -29,6 +30,17 @@ pub enum AttributeType {
     Index,
     Joints,
     Weights,
+    IBMS,
+}
+
+pub fn get_data_from_binary<'a, T: AnyBitPattern>(
+    offset: u32,
+    len: u32,
+    binary_data: &'a Vec<u8>,
+) -> &'a [T] {
+    let data_bytes = &binary_data[offset as usize..(offset + len) as usize];
+    let cast_slice = bytemuck::cast_slice::<u8, T>(data_bytes);
+    cast_slice
 }
 
 pub(super) fn get_primitive_data(
@@ -49,6 +61,7 @@ pub(super) fn get_primitive_data(
                 Dimensions::Vec2 => 2,
                 Dimensions::Vec3 => 3,
                 Dimensions::Vec4 => 4,
+                Dimensions::Mat4 => 16,
                 _ => todo!(),
             };
             let length = byte_size * num_elements * accessor.count();

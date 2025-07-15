@@ -25,6 +25,19 @@ pub struct GScene {
 }
 
 impl GScene {
+    pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
+        let maybe_animation_frame = self.animation_controller.do_animations(timestamp, &self.models);
+        match maybe_animation_frame {
+            Some(animation_frame) => {
+                self.instance_data
+                    .apply_animation_frame_unchecked(animation_frame);
+
+                return true;
+            }
+            None => return false,
+        }
+    }
+
     pub fn initialize_animation(
         &mut self,
         model_id: usize,
@@ -42,18 +55,6 @@ impl GScene {
             .initialize_animation(animation_data, animation_index, offset_count.0, offset_count.1, self.models[model_id].animation_data.as_ref().unwrap().joint_count);
     }
 
-    pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
-        let maybe_animation_frame = self.animation_controller.do_animations(timestamp, &self.models);
-        match maybe_animation_frame {
-            Some(animation_frame) => {
-                self.instance_data
-                    .apply_animation_frame_unchecked(animation_frame);
-
-                return true;
-            }
-            None => return false,
-        }
-    }
 
     pub fn init(&mut self, device: &wgpu::Device, aspect_ratio: f32) {
         self.vertex_data.init(device);
@@ -151,6 +152,7 @@ pub struct GSceneData {
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
+    joint_transforms: Vec<[[f32;4];4]>,
 }
 
 impl GSceneData {
@@ -167,7 +169,7 @@ impl GSceneData {
         scaffold: &SceneScaffold,
     ) -> Result<GScene, InitializationError> {
         let instance_data =
-            InstanceData::from_scaffold(scaffold, self.local_transforms, &self.models)?;
+            InstanceData::from_scaffold(scaffold, self.local_transforms,self.joint_transforms, &self.models, )?;
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
         let animation_controller = SceneAnimationController::new(self.models.len());
@@ -183,7 +185,7 @@ impl GSceneData {
         return Ok(scene);
     }
     pub fn build_scene_uninit(self) -> GScene {
-        let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms);
+        let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms, self.joint_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
         let animation_controller = SceneAnimationController::new(self.models.len());
@@ -212,6 +214,7 @@ impl GSceneData {
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,
+            joint_transforms: gltf_data.joint_transforms,
         }
     }
 

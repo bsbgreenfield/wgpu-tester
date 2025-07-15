@@ -2,16 +2,21 @@ use std::{collections::HashMap, fmt::Debug, marker::PhantomData, rc::Rc, time::D
 
 use cgmath::SquareMatrix;
 
-use crate::model::animation::animation_node::{AnimationNode, AnimationSample};
+use crate::model::{
+    animation::animation_node::{AnimationNode, AnimationSample},
+    model::ModelAnimationData,
+};
 
 pub(super) struct AnimationProcessingResult<'a> {
     pub(super) mesh_transforms: &'a [[[f32; 4]; 4]],
     pub(super) joint_transforms: &'a [[[f32; 4]; 4]],
+    pub(super) joint_indices: &'a [usize],
     pub(super) is_done: bool,
 }
 pub struct AnimationFrame<'a> {
     pub lt_offsets: Vec<usize>,
     pub mesh_transform_slices: Vec<&'a [[[f32; 4]; 4]]>,
+    pub joint_ids: Vec<&'a [usize]>,
     pub joint_transform_slices: Vec<&'a [[[f32; 4]; 4]]>,
 }
 
@@ -79,12 +84,11 @@ impl GAnimationInstance {
     pub(super) fn process_animation_frame<'a>(
         &'a mut self,
         timestamp: Duration,
-        mesh_to_lt_index_map: &HashMap<usize, usize>,
-        joint_to_joint_index_map: &HashMap<usize, usize>,
+        animation_data: &'a ModelAnimationData,
     ) -> AnimationProcessingResult<'a> {
         match self {
             Self::MeshAnimationInstanceType(a) => {
-                a.process_animation_frame(timestamp, mesh_to_lt_index_map, joint_to_joint_index_map)
+                a.process_animation_frame(timestamp, animation_data)
             }
             Self::JointAnimationInstanceType(a) => todo!(),
         }
@@ -124,22 +128,18 @@ impl AnimationInstance<MeshAnimationInstance> {
     pub(super) fn process_animation_frame<'a>(
         &'a mut self,
         timestamp: Duration,
-        mesh_to_lt_index_map: &HashMap<usize, usize>,
-        joint_to_joint_index_map: &HashMap<usize, usize>,
+        animation_data: &'a ModelAnimationData,
     ) -> AnimationProcessingResult<'a> {
         self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
         // i dont think its a big problem, but its annoying.
         let node = self.animation_node.clone();
-        let done = node.update_node_transforms(
-            self,
-            cgmath::Matrix4::<f32>::identity(),
-            mesh_to_lt_index_map,
-            joint_to_joint_index_map,
-        );
+        let done =
+            node.update_node_transforms(self, cgmath::Matrix4::<f32>::identity(), animation_data);
         return AnimationProcessingResult {
             mesh_transforms: &self.mesh_transforms[..],
             joint_transforms: &self.joint_transforms[..],
+            joint_indices: &animation_data.joint_indices[..],
             is_done: done,
         };
     }
