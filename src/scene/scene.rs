@@ -1,10 +1,9 @@
-use core::fmt;
 use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
 use crate::model::animation::animation_controller::SceneAnimationController;
-use crate::model::animation::animation::SimpleAnimation;
 use crate::model::loader::loader::GltfData;
+use crate::model::loader::loader::ModelPrimitiveData;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
@@ -14,6 +13,14 @@ use wgpu::util::DeviceExt;
 use super::camera::Camera;
 use super::camera::{get_camera_bind_group, get_camera_default};
 use super::instances::InstanceData;
+pub struct PrimitiveData {
+    pub positions: Vec<u8>,
+    pub indices_offset: usize,
+    pub indices_len: usize,
+    pub normals: Option<Vec<u8>>,
+    pub joints: Option<Vec<u8>>,
+    pub weights: Option<Vec<u8>>,
+}
 
 pub struct GScene {
     pub models: Vec<GModel>,
@@ -45,14 +52,14 @@ impl GScene {
         animation_index: usize,
     ) {
         let animation_data = self.models[model_id].animation_data.as_ref().expect(format!("The given model {} has no animations!", model_id).as_str());
-        let offset_count = if self.models[model_id].animation_data.as_ref().unwrap().mesh_animations.contains(&animation_index) {
+        let offset_count = if self.models[model_id].animation_data.as_ref().unwrap().mesh_animation_data.mesh_animations.contains(&animation_index) {
              self.instance_data.get_instance_local_offset(instance_idx, model_id)
         } else {
             (0 as usize,0 as usize) 
         };
        
         self.animation_controller
-            .initialize_animation(animation_data, animation_index, offset_count.0, offset_count.1, self.models[model_id].animation_data.as_ref().unwrap().joint_count);
+            .initialize_animation(animation_data, animation_index, offset_count.0, offset_count.1, self.models[model_id].animation_data.as_ref().unwrap().joint_animation_data.joint_count);
     }
 
 
@@ -68,6 +75,22 @@ impl GScene {
     }
     pub fn get_instance_local_offset(&self, instance_idx: usize, model_id: usize) -> (usize, usize) {
         self.instance_data.get_instance_local_offset(instance_idx, model_id)
+    }
+   
+    pub unsafe fn get_joint_buf_unchecked(&self) -> &wgpu::Buffer {
+        return self.instance_data.joint_transform_buffer.as_ref().unwrap_unchecked();
+    }
+
+    pub fn get_joint_buf(&self) -> Result<&wgpu::Buffer, InitializationError> {
+        if self.instance_data.joint_transform_buffer.is_some() {
+            return Ok(self.instance_data.joint_transform_buffer.as_ref().unwrap());
+        }
+        Err(InitializationError::InstanceDataInitializationError(
+            Box::new(String::from(    
+            "Joint buffer has not been initialized! Please call InstanceData.init() when your data is ready"
+            ))
+        ))
+
     }
 
     pub fn get_global_buf(&self) -> Result<&wgpu::Buffer, InitializationError> {
@@ -134,6 +157,10 @@ impl GScene {
     pub fn get_global_transform_buffer(&self) -> &Option<wgpu::Buffer> {
         &self.instance_data.global_transform_buffer
     }
+    pub fn get_joint_transform_data(&self) -> &Vec<[[f32; 4]; 4]> {
+        &self.instance_data.joint_global_transforms
+    }
+
     pub fn get_index_buffer(&self) -> &Option<wgpu::Buffer> {
         return &self.index_data.index_buffer;
     }
@@ -204,10 +231,12 @@ impl GSceneData {
         // build out vertex and index data from the models, meshes, and primitives by referencing
         // the main blob
         let vertex_vec =
-            Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
+            Self::get_scene_vertex_buffer_data(&mut gltf_data.models, &gltf_data.model_primitive_data);
+
         let index_vec =
-            Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.binary_data);
-            get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
+            Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.model_primitive_data, &gltf_data.binary_data);
+
+        get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
 
         Self {
             models: gltf_data.models,
@@ -220,29 +249,30 @@ impl GSceneData {
 
     fn get_scene_vertex_buffer_data(
         models: &mut Vec<GModel>,
-        main_buffer_data: &Vec<u8>,
+        model_primitive_data: &Vec<ModelPrimitiveData>
     ) -> Vec<ModelVertex> {
         let mut vertex_buffer_data = Vec::<ModelVertex>::new();
         // loop through the models -> meshes -> primitives to build out the vertex buffer
         let mut buffer_offset_val = 0;
-        for model in models.iter_mut() {
+        for (i, model ) in models.iter_mut().enumerate() {
             vertex_buffer_data
-                .extend(model.get_model_vertex_data(main_buffer_data, &mut buffer_offset_val));
+                .extend(model.get_model_vertex_data(&model_primitive_data[i].primitive_data,  &mut buffer_offset_val));
         }
         vertex_buffer_data
     }
     fn get_scene_index_buffer_data(
         models: &mut Vec<GModel>,
+        model_primitive_data: &Vec<ModelPrimitiveData>,
         main_buffer_data: &Vec<u8>,
     ) -> Vec<u16> {
         let mut range_vec: Vec<std::ops::Range<usize>> = Vec::new();
-        for model in models.iter() {
-            model.build_range_vec(&mut range_vec); // MUTATE RANGE VEC
+        for (model_idx, model ) in models.iter().enumerate() {
+            model.build_range_vec(&mut range_vec, &model_primitive_data[model_idx].primitive_data); // MUTATE RANGE VEC
         }
         let index_vec = GModel::get_model_index_data(main_buffer_data, &range_vec);
         // add in the relative buffer offset and len based on the new composed data vec
-        for model in models.iter_mut() {
-            model.set_model_primitive_offsets(&range_vec);
+        for (model_idx, model ) in models.iter_mut().enumerate() {
+            model.set_model_primitive_offsets(&range_vec, &model_primitive_data[model_idx].primitive_data);
         }
         index_vec
     }
@@ -282,6 +312,7 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
 
 impl SceneData<Vec<u16>> for IndexData {
     fn init(&mut self, device: &wgpu::Device) {
+        println!("INDICES:{:?}", self.indices.len());
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Scene Index Buffer"),
             contents: bytemuck::cast_slice(&self.indices),

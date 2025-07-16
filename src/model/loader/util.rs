@@ -11,46 +11,47 @@ use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
     animation::animation_node::{AnimationNode, NodeType},
-    loader::loader::GltfFileLoadError,
-    model::{GModel, LocalTransform, ModelAnimationData},
-    util::{get_data_from_binary, get_model_meshes, get_primitive_data, AttributeType},
+    loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData},
+    model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData},
+    util::{copy_binary_data_from_gltf, get_model_meshes},
 };
 
-struct NodeData {
-    mesh_data: Option<ModelMeshData>,
-    joint_data: Option<Vec<u32>>,
-}
-impl NodeData {
-    fn new() -> Self {
-        Self {
-            mesh_data: Some(ModelMeshData::new()),
-            joint_data: None,
-        }
-    }
+struct ModelData {
+    mesh_data: ModelMeshData,
+    joint_data: ModelJointData,
 }
 
-struct ModelMeshData {
+struct ModelJointData {
     joint_ids: Vec<usize>,
     joint_pose_transforms: Vec<[[f32; 4]; 4]>,
+    joint_to_joint_index_map: HashMap<usize, usize>,
+}
+struct ModelMeshData {
     mesh_ids: Vec<u32>,
     mesh_instances: Vec<u32>,
     mesh_transform_buckets: Vec<Vec<LocalTransform>>,
     node_to_lt_index_map: HashMap<usize, usize>,
-    joint_to_joint_index_map: HashMap<usize, usize>,
 }
-impl ModelMeshData {
-    fn new() -> Self {
+impl Default for ModelMeshData {
+    fn default() -> Self {
         Self {
-            node_to_lt_index_map: HashMap::new(),
-            joint_to_joint_index_map: HashMap::new(),
-            mesh_ids: Vec::new(),
-            mesh_instances: Vec::new(),
-            mesh_transform_buckets: Vec::new(),
-            joint_ids: Vec::new(),
-            joint_pose_transforms: Vec::new(),
+            mesh_ids: Default::default(),
+            mesh_transform_buckets: Default::default(),
+            mesh_instances: Default::default(),
+            node_to_lt_index_map: Default::default(),
         }
     }
 }
+impl Default for ModelJointData {
+    fn default() -> Self {
+        Self {
+            joint_ids: Default::default(),
+            joint_to_joint_index_map: Default::default(),
+            joint_pose_transforms: Default::default(),
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub(super) struct GltfBinaryExtras {
     animation: Option<PathBuf>,
@@ -107,16 +108,49 @@ fn build_animation_node_tree(
     node
 }
 
+fn get_inverse_bind_matrices(
+    root_node_id: usize,
+    skins: &gltf::iter::Skins,
+    buffer_offsets: &Vec<u64>,
+    main_buffer_data: &Vec<u8>,
+) -> Vec<[[f32; 4]; 4]> {
+    let s = skins
+        .clone()
+        .find(|skin| {
+            for joint in skin.joints() {
+                if joint.index() == root_node_id {
+                    return true;
+                }
+            }
+            false
+        })
+        .expect("This joint should be associated with some skin");
+    let ibm_accessor = s
+        .inverse_bind_matrices()
+        .expect("should be an accessor for ibms");
+    bytemuck::cast_slice(
+        &copy_binary_data_from_gltf(
+            &ibm_accessor,
+            gltf::Semantic::Tangents,
+            buffer_offsets,
+            main_buffer_data,
+        )
+        .expect("should be ibm data"),
+    )
+    .to_vec()
+}
+
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
     nodes: gltf::iter::Nodes<'a>,
     animations: &gltf::iter::Animations,
     buffers: &gltf::iter::Buffers,
     skins: &gltf::iter::Skins,
-    main_buffer_data: &Vec<u8>,
-) -> (Vec<GModel>, Vec<LocalTransform>, Vec<[[f32; 4]; 4]>) {
+    main_buffer_data: Vec<u8>,
+) -> GltfData {
     let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
+    let mut model_primitive_data: Vec<ModelPrimitiveData> = Vec::new();
     let mut local_transform_data = Vec::<LocalTransform>::new();
     let mut joint_transform_data = Vec::<[[f32; 4]; 4]>::new();
     let mut joint_ids = Vec::<usize>::new();
@@ -127,7 +161,10 @@ pub(super) fn load_models_from_gltf<'a>(
     }
     for rid in root_nodes_ids.iter() {
         let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
-        let mut model_mesh_data = ModelMeshData::new();
+        let mut model_data: ModelData = ModelData {
+            mesh_data: ModelMeshData::default(),
+            joint_data: ModelJointData::default(),
+        };
 
         let root_node: &gltf::Node<'a> = &nodes[*rid];
         if root_node.camera().is_some() {
@@ -135,34 +172,18 @@ pub(super) fn load_models_from_gltf<'a>(
         }
         let mut joint_ibms = None;
         if joint_ids.contains(&root_node.index()) {
-            let s = skins
-                .clone()
-                .find(|skin| {
-                    for joint in skin.joints() {
-                        if joint.index() == root_node.index() {
-                            return true;
-                        }
-                    }
-                    false
-                })
-                .expect("This joint should be associated with some skin");
-            let maybe_ibm_accessor = s.inverse_bind_matrices();
-            let (offset, len) = get_primitive_data(
-                maybe_ibm_accessor.as_ref(),
-                AttributeType::IBMS,
+            joint_ibms = Some(get_inverse_bind_matrices(
+                *rid,
+                skins,
                 &buffer_offsets,
-            )
-            .expect("should have inverse bind matrices")
-            .expect("should have accessor defined");
-            joint_ibms =
-                Some(get_data_from_binary::<[[f32; 4]; 4]>(offset, len, main_buffer_data).to_vec());
+                &main_buffer_data,
+            ))
         }
 
-        // mesh data
-        model_mesh_data = find_model_meshes(
+        model_data = get_model_data(
             root_node,
             cgmath::Matrix4::<f32>::identity(),
-            model_mesh_data,
+            model_data,
             &joint_ids,
         );
 
@@ -170,63 +191,80 @@ pub(super) fn load_models_from_gltf<'a>(
         let (maybe_animation_node, animation_count, mesh_animations) = load_animations(
             &root_node,
             animations,
-            &model_mesh_data.joint_ids,
+            &model_data.joint_data.joint_ids,
             &buffer_offsets,
         );
 
         // instantiate meshes, instantiate model
-        let meshes = get_model_meshes(&model_mesh_data.mesh_ids, &nodes, &buffer_offsets)
-            .expect("meshes for this model");
-        let mi_len = model_mesh_data.mesh_instances.len().clone();
+        let (meshes, primitive_data) = get_model_meshes(
+            &model_data.mesh_data.mesh_ids,
+            &nodes,
+            &buffer_offsets,
+            &main_buffer_data,
+        )
+        .expect("meshes for this model");
+        model_primitive_data.push(ModelPrimitiveData {
+            model_id: models.len(),
+            primitive_data,
+        });
+
+        let mesh_intances_len = model_data.mesh_data.mesh_instances.len().clone();
+
         let gmodel_animation_data: Option<ModelAnimationData> = match maybe_animation_node {
             Some(animation_node) => {
-                let joint_count = model_mesh_data.joint_to_joint_index_map.len().clone();
-                let joint_indices: Vec<usize> = model_mesh_data
+                let joint_count = model_data.joint_data.joint_to_joint_index_map.len().clone();
+                let joint_indices: Vec<usize> = model_data
+                    .joint_data
                     .joint_to_joint_index_map
                     .clone()
                     .into_values()
                     .collect();
                 Some(ModelAnimationData {
-                    mesh_animations,
                     animation_count,
                     model_index: models.len(),
                     animation_node: Rc::new(animation_node),
-                    node_to_lt_index: model_mesh_data.node_to_lt_index_map,
-                    joint_to_joint_index: model_mesh_data.joint_to_joint_index_map,
-                    joint_count,
-                    joint_ibms,
-                    joint_indices,
+                    mesh_animation_data: MeshAnimationData {
+                        mesh_animations,
+                        node_to_lt_index: model_data.mesh_data.node_to_lt_index_map,
+                    },
+                    joint_animation_data: JointAnimationData {
+                        joint_to_joint_index: model_data.joint_data.joint_to_joint_index_map,
+                        joint_count,
+                        joint_ibms,
+                        joint_indices,
+                    },
                 })
             }
 
             None => None,
         };
-        println!(
-            "ANIMATION DATA FOR MODEL {}: {:?}",
-            models.len(),
-            gmodel_animation_data,
-        );
         let g_model = GModel::new(
             meshes,
-            model_mesh_data.mesh_instances,
+            model_data.mesh_data.mesh_instances,
             gmodel_animation_data,
         );
 
-        assert_eq!(model_mesh_data.mesh_ids.len(), mi_len,);
+        assert_eq!(model_data.mesh_data.mesh_ids.len(), mesh_intances_len,);
         assert_eq!(
-            model_mesh_data.mesh_transform_buckets.len(),
-            model_mesh_data.mesh_ids.len()
+            model_data.mesh_data.mesh_transform_buckets.len(),
+            model_data.mesh_data.mesh_ids.len()
         );
         // add the local transformations to the running vec
-        for i in 0..model_mesh_data.mesh_ids.len() {
+        for i in 0..model_data.mesh_data.mesh_ids.len() {
             // TODO: avoid copying the data
-            local_transform_data.extend(model_mesh_data.mesh_transform_buckets[i].clone());
+            local_transform_data.extend(model_data.mesh_data.mesh_transform_buckets[i].clone());
         }
-        joint_transform_data.extend(model_mesh_data.joint_pose_transforms);
+        joint_transform_data.extend(model_data.joint_data.joint_pose_transforms);
 
         models.push(g_model);
     }
-    (models, local_transform_data, joint_transform_data)
+    GltfData {
+        models,
+        binary_data: main_buffer_data,
+        model_primitive_data,
+        local_transforms: local_transform_data,
+        joint_transforms: joint_transform_data,
+    }
 }
 
 fn get_buffer_offsets(buffers: &gltf::iter::Buffers) -> Vec<u64> {
@@ -274,12 +312,12 @@ fn load_animations(
     }
 }
 
-fn find_model_meshes(
+fn get_model_data(
     root_node: &gltf::Node,
     base_translation: cgmath::Matrix4<f32>,
-    mut model_mesh_data: ModelMeshData,
+    mut model_data: ModelData,
     joint_ids: &Vec<usize>,
-) -> ModelMeshData {
+) -> ModelData {
     let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
     let new_trans = base_translation * cg_trans;
     if let Some(mesh) = root_node.mesh() {
@@ -292,45 +330,51 @@ fn find_model_meshes(
             };
             // check if this mesh has already been added, if so
             // add this mesh transform to the end of the bucket at index
-            for (idx, m) in model_mesh_data.mesh_ids.iter().enumerate() {
-                transform_index += model_mesh_data.mesh_transform_buckets[idx].len();
+            for (idx, m) in model_data.mesh_data.mesh_ids.iter().enumerate() {
+                transform_index += model_data.mesh_data.mesh_transform_buckets[idx].len();
 
                 if *m == mesh.index() as u32 {
-                    model_mesh_data.mesh_instances[idx] += 1;
-                    model_mesh_data.mesh_transform_buckets[idx].push(local_transform);
+                    model_data.mesh_data.mesh_instances[idx] += 1;
+                    model_data.mesh_data.mesh_transform_buckets[idx].push(local_transform);
                     break 'block;
                 }
             }
             // if we get here, then the mesh is totally new
-            model_mesh_data.mesh_ids.push(mesh.index() as u32);
-            model_mesh_data.mesh_instances.push(1);
-            model_mesh_data
+            model_data.mesh_data.mesh_ids.push(mesh.index() as u32);
+            model_data.mesh_data.mesh_instances.push(1);
+            model_data
+                .mesh_data
                 .mesh_transform_buckets
                 .push(vec![local_transform]);
 
             //
         }
-        let unique_kv = model_mesh_data
+        let unique_kv = model_data
+            .mesh_data
             .node_to_lt_index_map
             .insert(root_node.index(), transform_index);
         assert!(unique_kv.is_none()); // each node should be unique
     } else {
         match joint_ids.binary_search(&root_node.index()) {
             Ok(_) => {
-                model_mesh_data
+                model_data
+                    .joint_data
                     .joint_to_joint_index_map
-                    .insert(root_node.index(), model_mesh_data.joint_ids.len());
-                model_mesh_data.joint_ids.push(root_node.index());
-                model_mesh_data.joint_pose_transforms.push(new_trans.into());
+                    .insert(root_node.index(), model_data.joint_data.joint_ids.len());
+                model_data.joint_data.joint_ids.push(root_node.index());
+                model_data
+                    .joint_data
+                    .joint_pose_transforms
+                    .push(new_trans.into());
             }
             Err(_) => {}
         }
     }
 
     for child_node in root_node.children() {
-        model_mesh_data = find_model_meshes(&child_node, new_trans, model_mesh_data, joint_ids);
+        model_data = get_model_data(&child_node, new_trans, model_data, joint_ids);
     }
-    model_mesh_data
+    model_data
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

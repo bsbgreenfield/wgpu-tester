@@ -114,9 +114,9 @@ impl AnimationNode {
         }
     }
 
-    pub(super) fn update_node_transforms<T>(
+    pub(super) fn update_node_transforms(
         &self,
-        instance: &mut AnimationInstance<T>,
+        instance: &mut AnimationInstance,
         base_translation: cgmath::Matrix4<f32>,
         animation_data: &ModelAnimationData,
     ) -> bool {
@@ -213,7 +213,8 @@ impl AnimationNode {
         }
         match self.node_type {
             NodeType::Mesh => {
-                instance.mesh_transforms[animation_data.node_to_lt_index[&self.node_id]] =
+                instance.mesh_transforms
+                    [animation_data.mesh_animation_data.node_to_lt_index[&self.node_id]] =
                     composed_transform
                         .unwrap_or(base_translation * self.transform)
                         .into();
@@ -222,12 +223,14 @@ impl AnimationNode {
                 let local_joint_transform =
                     composed_transform.unwrap_or(base_translation * self.transform);
                 let inverse_bind_matrix: cgmath::Matrix4<f32> = animation_data
+                    .joint_animation_data
                     .joint_ibms
                     .as_ref()
                     .expect("should be joint ibms")
-                    [animation_data.joint_to_joint_index[&self.node_id]]
+                    [animation_data.joint_animation_data.joint_to_joint_index[&self.node_id]]
                     .into();
-                instance.joint_transforms[animation_data.joint_to_joint_index[&self.node_id]] =
+                instance.joint_transforms
+                    [animation_data.joint_animation_data.joint_to_joint_index[&self.node_id]] =
                     (local_joint_transform * inverse_bind_matrix).into();
             }
             NodeType::Node => {}

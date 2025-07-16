@@ -27,25 +27,6 @@ pub fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec
     }
 }
 
-/// for each mdoel with one or more animation nodes, extract the times and translations data
-/// from the main blob and put them in the relevant samplers.
-//pub fn get_scene_animation_data(
-//    mut simple_animations: Vec<SimpleAnimation>,
-//    main_buffer_data: &Vec<u8>,
-//) -> Vec<SimpleAnimation> {
-//    for animation in simple_animations.iter_mut() {
-//        let exclusive_node_reference: &mut AnimationNode =
-//            Rc::get_mut(&mut animation.animation_node)
-//                .expect("this should be the only reference to the node");
-//        copy_data_for_animation(
-//            exclusive_node_reference,
-//            animation.model_id,
-//            main_buffer_data,
-//        );
-//    }
-//    simple_animations
-//}
-
 /// Keeps track of which animations are currently playing.
 /// The controllers functions are
 /// 1. adding or removing active animation indices based on user input and time
@@ -53,7 +34,7 @@ pub fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec
 /// 3. interface between animations and the app.
 pub struct SceneAnimationController {
     dead_animations: Vec<usize>,
-    pub(super) active_animations: Vec<VecDeque<GAnimationInstance>>,
+    pub(super) active_animations: Vec<VecDeque<AnimationInstance>>,
     pub(super) active_animation_count: usize,
 }
 
@@ -85,14 +66,11 @@ impl SceneAnimationController {
         let mut sample_map = HashMap::<usize, Option<AnimationSample>>::new();
         animation_node.get_default_samples(animation_index, &mut sample_map);
         animation_node.initialize_sampled_transforms(&mut mesh_transforms, &mut joint_transforms);
-        println!("Joint transforms: {:?}", joint_transforms);
-        println!("Mesh transforms: {:?}", mesh_transforms);
-
         let start_time = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap();
 
-        let animation_instance = GAnimationInstance::new_mesh_animation(
+        let animation_instance = AnimationInstance::new(
             animation_node,
             model_instance_offset,
             start_time,
@@ -142,7 +120,7 @@ impl SceneAnimationController {
             for animation_instance in bucket.iter_mut() {
                 frame
                     .lt_offsets
-                    .push(animation_instance.get_model_instance_offset());
+                    .push(animation_instance.model_instance_offset);
                 let animation_processing_result =
                     animation_instance.process_animation_frame(timestamp, animation_data);
                 frame

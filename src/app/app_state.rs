@@ -40,6 +40,7 @@ pub struct AppState<'a> {
     render_pipeline: wgpu::RenderPipeline,
     pub gscene: GScene,
     bind_groups: Vec<wgpu::BindGroup>,
+    joint_bind_group: wgpu::BindGroup,
     pub input_controller: InputController,
 }
 
@@ -53,12 +54,19 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
+
         let gscene = util::get_scene(&app_config, aspect_ratio);
+
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
+
         let (global_instance_bind_group_layout, global_instance_bind_group) =
             AppState::setup_global_instance_bind_group(&app_config, &gscene);
+
+        let (joint_bgl, joint_bind_group) = AppState::setup_joint_bind_group(&app_config, &gscene);
+
         let bind_groups = vec![camera_bind_group, global_instance_bind_group];
+
         let render_pipeline_layout =
             app_config
                 .device
@@ -67,6 +75,7 @@ impl<'a> AppState<'a> {
                     bind_group_layouts: &[
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
+                        &joint_bgl,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -127,8 +136,46 @@ impl<'a> AppState<'a> {
             render_pipeline,
             gscene,
             bind_groups,
+            joint_bind_group,
             input_controller: InputController::new(),
         }
+    }
+
+    fn setup_joint_bind_group(
+        app_config: &AppConfig,
+        scene: &GScene,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let joint_bind_group_layout =
+            app_config
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("joint transform bgl"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+        let joint_bind_group = app_config
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &joint_bind_group_layout,
+                entries: &[BindGroupEntry {
+                    binding: 2,
+                    resource: scene
+                        .get_joint_buf()
+                        .expect("should be initialized")
+                        .as_entire_binding(),
+                }],
+                label: Some("Joint bind group"),
+            });
+
+        (joint_bind_group_layout, joint_bind_group)
     }
 
     fn setup_global_instance_bind_group(
@@ -222,6 +269,11 @@ impl<'a> AppState<'a> {
                     0,
                     bytemuck::cast_slice(self.gscene.get_local_transform_data()),
                 );
+                self.app_config.queue.write_buffer(
+                    self.gscene.get_joint_buf_unchecked(),
+                    0,
+                    bytemuck::cast_slice(self.gscene.get_joint_transform_data()),
+                );
             }
         }
         //let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.3));
@@ -278,9 +330,6 @@ impl<'a> AppState<'a> {
             }
 
             render_pass.set_pipeline(&self.render_pipeline);
-            //if self.scene.draw_scene(&mut render_pass).is_err() {
-            //    panic!("error");
-            //}
             render_pass.set_vertex_buffer(
                 0,
                 self.gscene.get_vertex_buffer().as_ref().unwrap().slice(..),
@@ -291,6 +340,7 @@ impl<'a> AppState<'a> {
                     wgpu::IndexFormat::Uint16,
                 );
             }
+            render_pass.set_bind_group(2, &self.joint_bind_group, &[]);
             render_pass.set_vertex_buffer(
                 1,
                 self.gscene

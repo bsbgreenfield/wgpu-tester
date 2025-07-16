@@ -70,12 +70,13 @@ impl InstanceData {
                 }
             }
         }
-        unsafe {
-            for (slice_index, joint_indices) in animation_frame.joint_ids.iter().enumerate() {
-                for (i, joint_index) in joint_indices.iter().enumerate() {
-                    self.joint_global_transforms[*joint_index] =
-                        animation_frame.joint_transform_slices[slice_index][i];
-                }
+        // TODO: if we want to animate multiple simultaneous instances, we will need to store
+        // separate copyies of the joint global transforms, just like we already do for local
+        // transforms
+        for (slice_index, joint_indices) in animation_frame.joint_ids.iter().enumerate() {
+            for (i, joint_index) in joint_indices.iter().enumerate() {
+                self.joint_global_transforms[*joint_index] =
+                    animation_frame.joint_transform_slices[slice_index][i];
             }
         }
     }
@@ -145,6 +146,12 @@ impl InstanceData {
             model_instances_local_offsets.push(*mesh_count);
         });
 
+        println!(
+            "JOINT TRANSFORM LENGTH {:?} * {:?} = {:?}",
+            joint_transforms.len(),
+            size_of::<[[f32; 4]; 4]>(),
+            (joint_transforms.len() * size_of::<[[f32; 4]; 4]>())
+        );
         let mut instance_data = Self {
             model_instances,
             local_transform_buffer: None,
@@ -190,8 +197,27 @@ impl InstanceData {
                 label: Some("global instance buffer"),
             });
 
+        let joint_buffer = if self.joint_global_transforms.len() > 0 {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                contents: bytemuck::cast_slice(&self.joint_global_transforms),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                label: Some("Joint transform buffer"),
+            })
+        } else {
+            // create the buffer with dummy data
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                contents: bytemuck::cast_slice::<[[f32; 4]; 4], u8>(&[
+                    cgmath::Matrix4::<f32>::identity().into(),
+                ]),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                label: Some("Joint transform buffer"),
+            })
+        };
+        println!("Creating Joint Buffer with Size {:?}", joint_buffer.size());
+
         self.global_transform_buffer = Some(global_transform_buffer);
         self.local_transform_buffer = Some(local_transform_buffer);
+        self.joint_transform_buffer = Some(joint_buffer);
     }
 
     pub fn add_model_instance(

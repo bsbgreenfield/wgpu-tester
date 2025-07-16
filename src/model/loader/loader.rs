@@ -1,8 +1,13 @@
 use std::path::PathBuf;
 
-use crate::model::{
-    loader::util::{decode_gltf_data_uri, get_data_files, get_root_nodes, load_models_from_gltf},
-    model::{GModel, LocalTransform},
+use crate::{
+    model::{
+        loader::util::{
+            decode_gltf_data_uri, get_data_files, get_root_nodes, load_models_from_gltf,
+        },
+        model::{GModel, LocalTransform},
+    },
+    scene::scene::PrimitiveData,
 };
 use gltf::Gltf;
 
@@ -41,31 +46,28 @@ impl GltfLoader {
         };
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
         let nodes = gltf.nodes();
-        let (models, local_transforms, joint_transforms) = load_models_from_gltf(
+        let gltf_data: GltfData = load_models_from_gltf(
             root_node_ids,
             nodes,
             &gltf.animations(),
             &gltf.buffers(),
             &gltf.skins(),
-            &binary_data,
-        );
-        for model in models.iter() {
-            model.print_model();
-        }
-        let gltf_data = GltfData {
-            models,
             binary_data,
-            local_transforms,
-            joint_transforms,
-        };
+        );
 
         Ok(gltf_data)
     }
 }
 
+pub struct ModelPrimitiveData {
+    pub(super) model_id: usize,
+    pub primitive_data: Vec<PrimitiveData>,
+}
+
 pub struct GltfData {
     pub models: Vec<GModel>,
     pub binary_data: Vec<u8>,
+    pub model_primitive_data: Vec<ModelPrimitiveData>,
     pub local_transforms: Vec<LocalTransform>,
     pub joint_transforms: Vec<[[f32; 4]; 4]>,
 }

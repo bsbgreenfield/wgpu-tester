@@ -1,7 +1,7 @@
 use super::util::GltfErrors;
 use crate::model::vertex::ModelVertex;
 use crate::model::{animation::animation_node::AnimationNode, primitive::GPrimitive};
-use crate::scene::scene::GScene;
+use crate::scene::scene::{GScene, PrimitiveData};
 use gltf::Mesh;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -15,16 +15,23 @@ pub enum AccessorDataType {
     U16,
 }
 
-pub struct ModelAnimationData {
-    pub animation_node: Rc<AnimationNode>,
+pub struct MeshAnimationData {
     pub mesh_animations: Vec<usize>,
-    pub model_index: usize,
-    pub animation_count: usize,
     pub node_to_lt_index: HashMap<usize, usize>,
+}
+pub struct JointAnimationData {
     pub joint_to_joint_index: HashMap<usize, usize>,
     pub joint_count: usize,
     pub joint_ibms: Option<Vec<[[f32; 4]; 4]>>,
     pub joint_indices: Vec<usize>,
+}
+
+pub struct ModelAnimationData {
+    pub animation_node: Rc<AnimationNode>,
+    pub model_index: usize,
+    pub animation_count: usize,
+    pub mesh_animation_data: MeshAnimationData,
+    pub joint_animation_data: JointAnimationData,
 }
 
 impl Debug for ModelAnimationData {
@@ -32,8 +39,14 @@ impl Debug for ModelAnimationData {
         f.debug_struct("Animation Data")
             .field("model_index", &self.model_index)
             .field("animation_count", &self.animation_count)
-            .field("node_to_lt_index", &self.node_to_lt_index)
-            .field("joint_to_joint_index", &self.joint_to_joint_index)
+            .field(
+                "node_to_lt_index",
+                &self.mesh_animation_data.node_to_lt_index,
+            )
+            .field(
+                "joint_to_joint_index",
+                &self.joint_animation_data.joint_to_joint_index,
+            )
             .finish()
     }
 }
@@ -69,29 +82,35 @@ impl GModel {
 
     pub fn get_model_vertex_data(
         &mut self,
-        main_buffer_data: &Vec<u8>,
+        primitive_data: &Vec<PrimitiveData>,
         buffer_offset_val: &mut u32,
     ) -> Vec<ModelVertex> {
         let mut vertex_buffer_data = Vec::<ModelVertex>::new();
-        for mesh in self.meshes.iter_mut() {
-            for primitive in mesh.primitives.iter_mut() {
-                let primitive_vertex_data = primitive.get_vertex_data(main_buffer_data);
-                primitive.initialized_vertex_offset_len =
-                    Some((*buffer_offset_val, primitive_vertex_data.len() as u32));
+        // for each piece of data associated with a primitive in this model
+        // add data to the vertex buffer.
+        for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
+            for (primitive_idx, primitive) in mesh.primitives.iter_mut().enumerate() {
+                let primitive_vertex_data =
+                    &primitive_data[mesh_idx + primitive_idx].get_vertex_data();
                 *buffer_offset_val += primitive_vertex_data.len() as u32;
                 vertex_buffer_data.extend(primitive_vertex_data);
+                primitive.initialized_vertex_offset_len =
+                    Some((*buffer_offset_val, primitive_vertex_data.len() as u32));
             }
         }
         vertex_buffer_data
     }
 
-    pub fn build_range_vec(&self, range_vec: &mut Vec<std::ops::Range<usize>>) {
-        for mesh in self.meshes.iter() {
-            for primitive in mesh.primitives.iter() {
-                let offset_len = primitive.indices_offset_len.unwrap_or((0, 0));
-                let primitive_range = offset_len.0 as usize..(offset_len.0 + offset_len.1) as usize;
-                crate::model::range_splicer::define_index_ranges(range_vec, &primitive_range);
-            }
+    pub fn build_range_vec(
+        &self,
+        range_vec: &mut Vec<std::ops::Range<usize>>,
+        primitive_data: &Vec<PrimitiveData>,
+    ) {
+        for data in primitive_data.iter() {
+            let offset = data.indices_offset;
+            let len = data.indices_len;
+            let primitive_range = offset..offset + len;
+            crate::model::range_splicer::define_index_ranges(range_vec, &primitive_range);
         }
     }
 
@@ -101,11 +120,18 @@ impl GModel {
     ) -> Vec<u16> {
         GPrimitive::get_index_data(main_buffer_data, &range_vec)
     }
-    pub fn set_model_primitive_offsets(&mut self, range_vec: &Vec<std::ops::Range<usize>>) {
-        for mesh in self.meshes.iter_mut() {
-            for primitive in mesh.primitives.iter_mut() {
+    pub fn set_model_primitive_offsets(
+        &mut self,
+        range_vec: &Vec<std::ops::Range<usize>>,
+        primitive_data: &Vec<PrimitiveData>,
+    ) {
+        for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
+            for (primitive_idx, primitive) in mesh.primitives.iter_mut().enumerate() {
                 primitive
-                    .set_relative_indices_offset(&range_vec)
+                    .set_relative_indices_offset(
+                        &primitive_data[mesh_idx + primitive_idx],
+                        &range_vec,
+                    )
                     .expect("set primitive indices offset");
             }
         }
@@ -116,11 +142,24 @@ impl GModel {
 pub(super) struct GMesh {
     primitives: Vec<GPrimitive>,
 }
+
 impl GMesh {
-    pub(super) fn new(mesh: &Mesh, buffer_offsets: &Vec<u64>) -> Result<Self, GltfErrors> {
-        let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
+    pub fn get_primitive_data(
+        mesh: &Mesh,
+        buffer_offsets: &Vec<u64>,
+        binary_data: &Vec<u8>,
+    ) -> Result<Vec<PrimitiveData>, GltfErrors> {
+        let mut primitive_data: Vec<PrimitiveData> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
-            let p = GPrimitive::new(primitive, buffer_offsets)?;
+            let data = PrimitiveData::from_data(primitive, buffer_offsets, binary_data)?;
+            primitive_data.push(data);
+        }
+        Ok(primitive_data)
+    }
+    pub(super) fn new(mesh: &Mesh) -> Result<Self, GltfErrors> {
+        let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
+        for _ in mesh.primitives() {
+            let p = GPrimitive::new();
             g_primitives.push(p);
         }
         Ok(Self {
