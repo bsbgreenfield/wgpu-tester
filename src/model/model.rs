@@ -22,7 +22,6 @@ pub struct MeshAnimationData {
 pub struct JointAnimationData {
     pub joint_to_joint_index: HashMap<usize, usize>,
     pub joint_count: usize,
-    pub joint_ibms: Option<Vec<[[f32; 4]; 4]>>,
     pub joint_indices: Vec<usize>,
 }
 
@@ -56,6 +55,7 @@ impl Debug for ModelAnimationData {
 // so that scene can access them, but I may want to work with
 // modesls independently later
 pub struct GModel {
+    pub model_id: usize,
     meshes: Vec<GMesh>,
     pub mesh_instances: Vec<u32>,
     pub animation_data: Option<ModelAnimationData>,
@@ -69,11 +69,13 @@ impl GModel {
         println!("---------------------------------------------");
     }
     pub(super) fn new(
+        model_id: usize,
         meshes: Vec<GMesh>,
         mesh_instances: Vec<u32>,
         animation_data: Option<ModelAnimationData>,
     ) -> Self {
         Self {
+            model_id,
             meshes,
             mesh_instances,
             animation_data,
@@ -88,14 +90,16 @@ impl GModel {
         let mut vertex_buffer_data = Vec::<ModelVertex>::new();
         // for each piece of data associated with a primitive in this model
         // add data to the vertex buffer.
-        for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
-            for (primitive_idx, primitive) in mesh.primitives.iter_mut().enumerate() {
-                let primitive_vertex_data =
-                    &primitive_data[mesh_idx + primitive_idx].get_vertex_data();
-                *buffer_offset_val += primitive_vertex_data.len() as u32;
-                vertex_buffer_data.extend(primitive_vertex_data);
+        for mesh in self.meshes.iter_mut() {
+            let mesh_primitive_data_vec = primitive_data
+                .iter()
+                .filter(|primitive_data| primitive_data.mesh_id == mesh.mesh_id);
+            for (primitive, data) in mesh.primitives.iter_mut().zip(mesh_primitive_data_vec) {
+                let primitive_vertex_data = data.get_vertex_data();
                 primitive.initialized_vertex_offset_len =
                     Some((*buffer_offset_val, primitive_vertex_data.len() as u32));
+                *buffer_offset_val += primitive_vertex_data.len() as u32;
+                vertex_buffer_data.extend(primitive_vertex_data);
             }
         }
         vertex_buffer_data
@@ -125,13 +129,13 @@ impl GModel {
         range_vec: &Vec<std::ops::Range<usize>>,
         primitive_data: &Vec<PrimitiveData>,
     ) {
-        for (mesh_idx, mesh) in self.meshes.iter_mut().enumerate() {
-            for (primitive_idx, primitive) in mesh.primitives.iter_mut().enumerate() {
+        for mesh in self.meshes.iter_mut() {
+            let mesh_primitive_data = primitive_data
+                .iter()
+                .filter(|data| data.mesh_id == mesh.mesh_id);
+            for (primitive, data) in mesh.primitives.iter_mut().zip(mesh_primitive_data) {
                 primitive
-                    .set_relative_indices_offset(
-                        &primitive_data[mesh_idx + primitive_idx],
-                        &range_vec,
-                    )
+                    .set_relative_indices_offset(data, &range_vec)
                     .expect("set primitive indices offset");
             }
         }
@@ -140,6 +144,7 @@ impl GModel {
 
 #[derive(Debug, Clone)]
 pub(super) struct GMesh {
+    pub mesh_id: usize,
     primitives: Vec<GPrimitive>,
 }
 
@@ -151,7 +156,8 @@ impl GMesh {
     ) -> Result<Vec<PrimitiveData>, GltfErrors> {
         let mut primitive_data: Vec<PrimitiveData> = Vec::with_capacity(mesh.primitives().len());
         for primitive in mesh.primitives() {
-            let data = PrimitiveData::from_data(primitive, buffer_offsets, binary_data)?;
+            let data =
+                PrimitiveData::from_data(mesh.index(), primitive, buffer_offsets, binary_data)?;
             primitive_data.push(data);
         }
         Ok(primitive_data)
@@ -163,6 +169,7 @@ impl GMesh {
             g_primitives.push(p);
         }
         Ok(Self {
+            mesh_id: mesh.index(),
             primitives: g_primitives,
         })
     }

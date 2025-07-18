@@ -68,6 +68,7 @@ impl GPrimitive {
 
 impl PrimitiveData {
     pub(super) fn from_data(
+        mesh_id: usize,
         primitive: Primitive,
         buffer_offsets: &Vec<u64>,
         binary_data: &Vec<u8>,
@@ -136,6 +137,7 @@ impl PrimitiveData {
             )?);
         }
         Ok(Self {
+            mesh_id,
             positions,
             indices_offset,
             indices_len,
@@ -150,7 +152,7 @@ impl PrimitiveData {
             Some(normals) => Some(bytemuck::cast_slice(normals).to_vec()),
             None => None,
         };
-        let joints_u8: Option<Vec<u8>> = match &self.joints {
+        let joints_u16: Option<Vec<u16>> = match &self.joints {
             Some(joints) => Some(bytemuck::cast_slice(&joints).to_vec()),
             None => None,
         };
@@ -169,7 +171,7 @@ impl PrimitiveData {
                     Some(n) => n[i * 3..i * 3 + 3].try_into().unwrap(),
                     None => [0.0, 0.0, 0.0],
                 };
-                let joints = match &joints_u8 {
+                let joints = match &joints_u16 {
                     Some(j) => j[i * 4..i * 4 + 4].try_into().unwrap(),
                     None => [0, 0, 0, 0],
                 };
@@ -177,6 +179,7 @@ impl PrimitiveData {
                     Some(w) => &w[i * 4..i * 4 + 4],
                     None => &[0, 0, 0, 0],
                 };
+
                 return ModelVertex {
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
                     normal: normal.try_into().unwrap(),

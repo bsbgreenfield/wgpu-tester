@@ -233,11 +233,11 @@ impl<'a> AppState<'a> {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
         if self.input_controller.key_1_down {
-            self.gscene.initialize_animation(1, 0, 0);
+            self.gscene.initialize_animation(0, 0, 0);
             self.input_controller.key_1_down = false;
         }
         if self.input_controller.key_2_down {
-            self.gscene.initialize_animation(1, 1, 0);
+            self.gscene.initialize_animation(0, 0, 1);
             self.input_controller.key_2_down = false;
         }
         // if self.input_controller.key_q_down {
@@ -276,18 +276,18 @@ impl<'a> AppState<'a> {
                 );
             }
         }
-        //let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.3));
-        //self.gscene.update_global_transform_x(0, rot.into());
-        //unsafe {
-        //    self.app_config.queue.write_buffer(
-        //        self.gscene
-        //            .get_global_transform_buffer()
-        //            .as_ref()
-        //            .unwrap_unchecked(),
-        //        0,
-        //        bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
-        //    );
-        //}
+        // let rot = cgmath::Matrix4::from_angle_y(cgmath::Deg(0.4));
+        // self.gscene.update_global_transform_x(0, rot.into());
+        // unsafe {
+        //     self.app_config.queue.write_buffer(
+        //         self.gscene
+        //             .get_global_transform_buffer()
+        //             .as_ref()
+        //             .unwrap_unchecked(),
+        //         0,
+        //         bytemuck::cast_slice(&self.gscene.get_global_transform_data()),
+        //     );
+        // }
         Ok(())
     }
 

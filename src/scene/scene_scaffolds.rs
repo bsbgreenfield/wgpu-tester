@@ -60,11 +60,7 @@ pub const BUGGY: SceneScaffold = SceneScaffold {
 pub const CUBE: SceneScaffold = SceneScaffold {
     file_paths: &["box"],
     global_transform_overrides: &[],
-    additional_instances: &[AdditionalScaffoldModelInstances {
-        model_index: 0,
-        additional_instance_count: 1,
-        global_transforms: &[transforms::translation(5.0, 5.0, 0.0)],
-    }],
+    additional_instances: &[],
 };
 pub const FOX: SceneScaffold = SceneScaffold {
     global_transform_overrides: &[ScaffoldGTOverride {

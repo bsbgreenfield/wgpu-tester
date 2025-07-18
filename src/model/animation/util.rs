@@ -23,7 +23,7 @@ pub(super) fn copy_data_for_animation(
                         );
                         sampler.transforms = transforms_slice.to_vec();
                     }
-                    AnimationType::Translation => {
+                    AnimationType::Translation | AnimationType::Scale => {
                         let mut padded_slices: Vec<[f32; 4]> = Vec::new();
                         let transforms_slice = bytemuck::cast_slice::<u8, [f32; 3]>(
                             &main_buffer_data[(sampler.transforms[0][0] as usize)
@@ -34,13 +34,13 @@ pub(super) fn copy_data_for_animation(
                         }
                         sampler.transforms = padded_slices;
                     }
-                    _ => todo!("havent implemented this type of animation yet (scale?)"),
                 }
                 sampler.times = times_slice.to_vec();
                 assert_eq!(
                     sampler.times.len(),
                     sampler.transforms.len(),
-                    "There should be an equal number of keyframe times as transforms"
+                    "There should be an equal number of keyframe times as transforms {:?}",
+                    sampler.animation_type
                 );
             }
         }
@@ -72,7 +72,8 @@ pub(super) fn get_animation_transforms(
         // 16 bytes of data
         gltf::animation::Property::Translation => transforms_accessor.count() * 12, // there should
         // be 123 bytes of data
-        _ => todo!("havent implemented scale or morph yet"),
+        gltf::animation::Property::Scale => transforms_accessor.count() * 12,
+        _ => todo!("havent implemented morph yet"),
     };
     let buffer_view = transforms_accessor.view().unwrap();
     let buffer_offset = buffer_offsets[buffer_view.buffer().index()] as usize;

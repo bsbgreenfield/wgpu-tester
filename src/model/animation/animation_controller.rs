@@ -4,16 +4,13 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use crate::{
-    model::{
-        animation::{
-            animation::*,
-            animation_node::{AnimationNode, AnimationSample},
-            util::copy_data_for_animation,
-        },
-        model::{GModel, ModelAnimationData},
+use crate::model::{
+    animation::{
+        animation::*,
+        animation_node::{AnimationNode, AnimationSample},
+        util::copy_data_for_animation,
     },
-    transforms,
+    model::{GModel, ModelAnimationData},
 };
 
 pub fn get_scene_animation_data(models: &mut Vec<GModel>, main_buffer_data: &Vec<u8>) {
@@ -36,10 +33,11 @@ pub struct SceneAnimationController {
     dead_animations: Vec<usize>,
     pub(super) active_animations: Vec<VecDeque<AnimationInstance>>,
     pub(super) active_animation_count: usize,
+    pub(super) skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>,
 }
 
 impl SceneAnimationController {
-    pub fn new(model_no: usize) -> Self {
+    pub fn new(model_no: usize, skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>) -> Self {
         let mut active_animations = Vec::with_capacity(model_no);
         for _ in 0..model_no {
             active_animations.push(VecDeque::with_capacity(10));
@@ -48,6 +46,7 @@ impl SceneAnimationController {
             dead_animations: vec![0; model_no],
             active_animations,
             active_animation_count: 0,
+            skin_ibms,
         }
     }
 
@@ -121,8 +120,11 @@ impl SceneAnimationController {
                 frame
                     .lt_offsets
                     .push(animation_instance.model_instance_offset);
-                let animation_processing_result =
-                    animation_instance.process_animation_frame(timestamp, animation_data);
+                let animation_processing_result = animation_instance.process_animation_frame(
+                    timestamp,
+                    animation_data,
+                    &self.skin_ibms,
+                );
                 frame
                     .mesh_transform_slices
                     .push(animation_processing_result.mesh_transforms);

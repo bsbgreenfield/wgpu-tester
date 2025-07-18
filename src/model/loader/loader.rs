@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::{
     model::{
@@ -60,7 +60,7 @@ impl GltfLoader {
 }
 
 pub struct ModelPrimitiveData {
-    pub(super) model_id: usize,
+    pub model_id: usize,
     pub primitive_data: Vec<PrimitiveData>,
 }
 
@@ -70,6 +70,7 @@ pub struct GltfData {
     pub model_primitive_data: Vec<ModelPrimitiveData>,
     pub local_transforms: Vec<LocalTransform>,
     pub joint_transforms: Vec<[[f32; 4]; 4]>,
+    pub skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>,
 }
 
 #[derive(Debug)]

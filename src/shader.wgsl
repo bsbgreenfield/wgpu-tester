@@ -2,7 +2,7 @@ struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
   @location(2) joints: vec4<u32>,
-  @location(3) weights: vec4<u32>,
+  @location(3) weights: vec4<f32>,
 }
 
 struct InstanceInput {
@@ -42,14 +42,11 @@ struct SkinMatrix {
    skin_matrix_3: vec4<f32>,
 }
 
-fn apply_bone_transform(obj: VertexInput) -> vec4<f32> {
+fn apply_bone_transform(joints: vec4<u32>, weights: vec4<f32>, position: vec3<f32>) -> vec4<f32> {
 	var result = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 	for (var i = 0; i < 4; i ++ ){
-		let joint_index = obj.joints[i];
-        let weight = f32(obj.weights[i]) / 255.0;
-
-        let transform = joint_transforms[joint_index];
-        let transformed_position = (transform * weight) * vec4<f32>(obj.position, 1.0) ;
+        let transform = joint_transforms[joints[i]];
+        let transformed_position =  weights[i]  * (transform  * vec4<f32>(position, 1.0)) ;
 
         result += transformed_position;
 	}
@@ -68,8 +65,10 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
 	let global_t_matrix = global_transforms.transforms[instance.model_index];
     var out: VertexOutput;
 
-	var position: vec4<f32> = apply_bone_transform(obj);
-    out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  * vec4<f32>(obj.position, 1.0);
+	//let joints: vec4<f32> = unpack4x8unorm(obj.joints);
+	//let weights: vec4<f32>  = unpack4x8unorm(obj.weights);
+	let new_position: vec4<f32> = apply_bone_transform(obj.joints, obj.weights, obj.position);
+    out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  * new_position;
 
     var color: vec3<f32> = vec3<f32>(0.5, 0.2, 0.7);
 	out.color = color; 

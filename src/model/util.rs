@@ -58,17 +58,22 @@ pub fn copy_binary_data_from_gltf(
         _ => todo!(),
     };
 
-    let stride = match view.stride() {
-        Some(s) => s,
-        None => 0,
+    let mut copy_dest: Vec<u8> = Vec::with_capacity(byte_size * num_elements * count);
+    let mut byte_loc = byte_offset;
+    let extra_stride = if let Some(stride) = view.stride() {
+        stride - (byte_size * num_elements)
+    } else {
+        0
     };
 
     println!(
-        "{:?}: byte_offset: {}, byte_size: {}, count: {}, num_elements: {}, stride {}",
-        accessor_type, byte_offset, byte_size, count, num_elements, stride
+        "{:?}: element size {}, count: {}, offset: {}, stride: {:?}",
+        accessor_type,
+        (byte_size * num_elements),
+        count,
+        byte_offset,
+        view.stride()
     );
-    let mut copy_dest: Vec<u8> = Vec::with_capacity(byte_size * num_elements * count);
-    let mut byte_loc = byte_offset;
     for _ in 0..count {
         for _ in 0..num_elements {
             for _ in 0..byte_size {
@@ -76,29 +81,13 @@ pub fn copy_binary_data_from_gltf(
                 byte_loc += 1;
             }
         }
-        byte_loc += stride - (byte_size * num_elements); // if the stride is equal to the byte size
-                                                         // of the component, then no need to adjust alignment
+
+        byte_loc += extra_stride;
+        // of the component, then no need to adjust alignment
     }
     assert_eq!(copy_dest.len(), byte_size * num_elements * count);
 
-    // for i in 0..count {
-    //     let o = i * num_elements * byte_size;
-    //     println!(
-    //         "{:?}",
-    //         bytemuck::cast_slice::<u8, f32>(&copy_dest[o..o + num_elements * byte_size])
-    //     );
-    // }
     Ok(copy_dest)
-}
-
-pub fn get_data_from_binary<'a, T: AnyBitPattern>(
-    offset: u32,
-    len: u32,
-    binary_data: &'a Vec<u8>,
-) -> &'a [T] {
-    let data_bytes = &binary_data[offset as usize..(offset + len) as usize];
-    let cast_slice = bytemuck::cast_slice::<u8, T>(data_bytes);
-    cast_slice
 }
 
 pub(super) fn get_index_offset_len(

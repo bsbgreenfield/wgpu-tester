@@ -12,6 +12,7 @@ use crate::model::{
     util::InitializationError,
 };
 
+#[derive(Debug)]
 pub(super) struct InstanceData {
     pub model_instances: Vec<usize>,
     pub local_transform_buffer: Option<wgpu::Buffer>,
@@ -74,9 +75,9 @@ impl InstanceData {
         // separate copyies of the joint global transforms, just like we already do for local
         // transforms
         for (slice_index, joint_indices) in animation_frame.joint_ids.iter().enumerate() {
-            for (i, joint_index) in joint_indices.iter().enumerate() {
+            for joint_index in joint_indices.iter() {
                 self.joint_global_transforms[*joint_index] =
-                    animation_frame.joint_transform_slices[slice_index][i];
+                    animation_frame.joint_transform_slices[slice_index][*joint_index];
             }
         }
     }
@@ -146,12 +147,6 @@ impl InstanceData {
             model_instances_local_offsets.push(*mesh_count);
         });
 
-        println!(
-            "JOINT TRANSFORM LENGTH {:?} * {:?} = {:?}",
-            joint_transforms.len(),
-            size_of::<[[f32; 4]; 4]>(),
-            (joint_transforms.len() * size_of::<[[f32; 4]; 4]>())
-        );
         let mut instance_data = Self {
             model_instances,
             local_transform_buffer: None,
@@ -213,7 +208,6 @@ impl InstanceData {
                 label: Some("Joint transform buffer"),
             })
         };
-        println!("Creating Joint Buffer with Size {:?}", joint_buffer.size());
 
         self.global_transform_buffer = Some(global_transform_buffer);
         self.local_transform_buffer = Some(local_transform_buffer);

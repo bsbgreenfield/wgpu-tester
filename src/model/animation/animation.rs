@@ -78,13 +78,18 @@ impl AnimationInstance {
         &'a mut self,
         timestamp: Duration,
         animation_data: &'a ModelAnimationData,
+        skin_ibms: &HashMap<usize, Vec<[[f32; 4]; 4]>>,
     ) -> AnimationProcessingResult<'a> {
         self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
         // i dont think its a big problem, but its annoying.
         let node = self.animation_node.clone();
-        let done =
-            node.update_node_transforms(self, cgmath::Matrix4::<f32>::identity(), animation_data);
+        let done = node.update_node_transforms(
+            self,
+            cgmath::Matrix4::<f32>::identity(),
+            animation_data,
+            skin_ibms,
+        );
         return AnimationProcessingResult {
             mesh_transforms: &self.mesh_transforms[..],
             joint_transforms: &self.joint_transforms[..],

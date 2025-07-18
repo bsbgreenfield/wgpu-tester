@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::model::animation::animation_controller::get_scene_animation_data;
@@ -14,6 +15,7 @@ use super::camera::Camera;
 use super::camera::{get_camera_bind_group, get_camera_default};
 use super::instances::InstanceData;
 pub struct PrimitiveData {
+    pub mesh_id: usize,
     pub positions: Vec<u8>,
     pub indices_offset: usize,
     pub indices_len: usize,
@@ -180,6 +182,7 @@ pub struct GSceneData {
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
     joint_transforms: Vec<[[f32;4];4]>,
+    skin_ibms: HashMap<usize, Vec<[[f32;4];4]>>,
 }
 
 impl GSceneData {
@@ -199,7 +202,7 @@ impl GSceneData {
             InstanceData::from_scaffold(scaffold, self.local_transforms,self.joint_transforms, &self.models, )?;
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
-        let animation_controller = SceneAnimationController::new(self.models.len());
+        let animation_controller = SceneAnimationController::new(self.models.len(), self.skin_ibms);
         let mut scene = GScene {
             animation_controller,
             models: self.models,
@@ -215,7 +218,7 @@ impl GSceneData {
         let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms, self.joint_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
-        let animation_controller = SceneAnimationController::new(self.models.len());
+        let animation_controller = SceneAnimationController::new(self.models.len(), self.skin_ibms);
 
         GScene {
             models: self.models,
@@ -244,6 +247,7 @@ impl GSceneData {
             index_vec,
             local_transforms: gltf_data.local_transforms,
             joint_transforms: gltf_data.joint_transforms,
+            skin_ibms: gltf_data.skin_ibms,
         }
     }
 
@@ -254,9 +258,10 @@ impl GSceneData {
         let mut vertex_buffer_data = Vec::<ModelVertex>::new();
         // loop through the models -> meshes -> primitives to build out the vertex buffer
         let mut buffer_offset_val = 0;
-        for (i, model ) in models.iter_mut().enumerate() {
+        for  model  in models.iter_mut() {
+            let this_model_primitive_data = model_primitive_data.iter().find(|mpd| mpd.model_id == model.model_id).expect("There should be one primitive data vec for this model ");
             vertex_buffer_data
-                .extend(model.get_model_vertex_data(&model_primitive_data[i].primitive_data,  &mut buffer_offset_val));
+                .extend(model.get_model_vertex_data(&this_model_primitive_data.primitive_data,  &mut buffer_offset_val));
         }
         vertex_buffer_data
     }
@@ -312,7 +317,6 @@ impl SceneData<Vec<ModelVertex>> for VertexData {
 
 impl SceneData<Vec<u16>> for IndexData {
     fn init(&mut self, device: &wgpu::Device) {
-        println!("INDICES:{:?}", self.indices.len());
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Scene Index Buffer"),
             contents: bytemuck::cast_slice(&self.indices),

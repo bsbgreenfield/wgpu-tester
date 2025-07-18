@@ -6,7 +6,7 @@ use std::{
 };
 
 use base64::Engine;
-use cgmath::SquareMatrix;
+use cgmath::{Matrix, SquareMatrix, Transform};
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
@@ -109,26 +109,14 @@ fn build_animation_node_tree(
 }
 
 fn get_inverse_bind_matrices(
-    root_node_id: usize,
-    skins: &gltf::iter::Skins,
+    skin: &gltf::Skin,
     buffer_offsets: &Vec<u64>,
     main_buffer_data: &Vec<u8>,
-) -> Vec<[[f32; 4]; 4]> {
-    let s = skins
-        .clone()
-        .find(|skin| {
-            for joint in skin.joints() {
-                if joint.index() == root_node_id {
-                    return true;
-                }
-            }
-            false
-        })
-        .expect("This joint should be associated with some skin");
-    let ibm_accessor = s
+) -> (usize, Vec<[[f32; 4]; 4]>) {
+    let ibm_accessor = skin
         .inverse_bind_matrices()
         .expect("should be an accessor for ibms");
-    bytemuck::cast_slice(
+    let ibm_vec = bytemuck::cast_slice(
         &copy_binary_data_from_gltf(
             &ibm_accessor,
             gltf::Semantic::Tangents,
@@ -137,7 +125,8 @@ fn get_inverse_bind_matrices(
         )
         .expect("should be ibm data"),
     )
-    .to_vec()
+    .to_vec();
+    (skin.index(), ibm_vec)
 }
 
 pub(super) fn load_models_from_gltf<'a>(
@@ -154,13 +143,16 @@ pub(super) fn load_models_from_gltf<'a>(
     let mut local_transform_data = Vec::<LocalTransform>::new();
     let mut joint_transform_data = Vec::<[[f32; 4]; 4]>::new();
     let mut joint_ids = Vec::<usize>::new();
+    let mut skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>> = HashMap::with_capacity(skins.len());
+    let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
     for skin in skins.clone().into_iter() {
+        let (skin_idx, ibms) = get_inverse_bind_matrices(&skin, &buffer_offsets, &main_buffer_data);
+        skin_ibms.insert(skin_idx, ibms);
         for joint in skin.joints().into_iter() {
             joint_ids.push(joint.index());
         }
     }
     for rid in root_nodes_ids.iter() {
-        let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
         let mut model_data: ModelData = ModelData {
             mesh_data: ModelMeshData::default(),
             joint_data: ModelJointData::default(),
@@ -170,21 +162,13 @@ pub(super) fn load_models_from_gltf<'a>(
         if root_node.camera().is_some() {
             continue;
         }
-        let mut joint_ibms = None;
-        if joint_ids.contains(&root_node.index()) {
-            joint_ibms = Some(get_inverse_bind_matrices(
-                *rid,
-                skins,
-                &buffer_offsets,
-                &main_buffer_data,
-            ))
-        }
 
         model_data = get_model_data(
             root_node,
             cgmath::Matrix4::<f32>::identity(),
             model_data,
             &joint_ids,
+            &skin_ibms,
         );
 
         // get a animation node trees
@@ -204,11 +188,9 @@ pub(super) fn load_models_from_gltf<'a>(
         )
         .expect("meshes for this model");
         model_primitive_data.push(ModelPrimitiveData {
-            model_id: models.len(),
+            model_id: *rid,
             primitive_data,
         });
-
-        let mesh_intances_len = model_data.mesh_data.mesh_instances.len().clone();
 
         let gmodel_animation_data: Option<ModelAnimationData> = match maybe_animation_node {
             Some(animation_node) => {
@@ -230,7 +212,6 @@ pub(super) fn load_models_from_gltf<'a>(
                     joint_animation_data: JointAnimationData {
                         joint_to_joint_index: model_data.joint_data.joint_to_joint_index_map,
                         joint_count,
-                        joint_ibms,
                         joint_indices,
                     },
                 })
@@ -239,12 +220,12 @@ pub(super) fn load_models_from_gltf<'a>(
             None => None,
         };
         let g_model = GModel::new(
+            *rid,
             meshes,
             model_data.mesh_data.mesh_instances,
             gmodel_animation_data,
         );
 
-        assert_eq!(model_data.mesh_data.mesh_ids.len(), mesh_intances_len,);
         assert_eq!(
             model_data.mesh_data.mesh_transform_buckets.len(),
             model_data.mesh_data.mesh_ids.len()
@@ -264,6 +245,7 @@ pub(super) fn load_models_from_gltf<'a>(
         model_primitive_data,
         local_transforms: local_transform_data,
         joint_transforms: joint_transform_data,
+        skin_ibms,
     }
 }
 
@@ -317,9 +299,10 @@ fn get_model_data(
     base_translation: cgmath::Matrix4<f32>,
     mut model_data: ModelData,
     joint_ids: &Vec<usize>,
+    skin_ibms: &HashMap<usize, Vec<[[f32; 4]; 4]>>,
 ) -> ModelData {
     let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
-    let new_trans = base_translation * cg_trans;
+    let mut new_trans = base_translation * cg_trans;
     if let Some(mesh) = root_node.mesh() {
         let mut transform_index = 0;
         'block: {
@@ -362,17 +345,19 @@ fn get_model_data(
                     .joint_to_joint_index_map
                     .insert(root_node.index(), model_data.joint_data.joint_ids.len());
                 model_data.joint_data.joint_ids.push(root_node.index());
+                let ibm: cgmath::Matrix4<f32> =
+                    skin_ibms.get(&0).unwrap()[joint_ids.len() - 1].into();
                 model_data
                     .joint_data
                     .joint_pose_transforms
-                    .push(new_trans.into());
+                    .push((cgmath::Matrix4::<f32>::identity()).into());
             }
             Err(_) => {}
         }
     }
 
     for child_node in root_node.children() {
-        model_data = get_model_data(&child_node, new_trans, model_data, joint_ids);
+        model_data = get_model_data(&child_node, new_trans, model_data, joint_ids, skin_ibms);
     }
     model_data
 }

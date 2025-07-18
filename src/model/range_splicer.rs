@@ -194,7 +194,6 @@ mod tests {
         indices_ranges.push(7..10);
         let primitive_indices_range = Range { start: 8, end: 15 };
         define_index_ranges(&mut indices_ranges, &primitive_indices_range);
-        println!("{:?}", indices_ranges);
         assert_eq!(indices_ranges.len(), 2);
         assert_eq!(indices_ranges[0], Range { start: 0, end: 4 });
         assert_eq!(indices_ranges[1], Range { start: 7, end: 15 });
