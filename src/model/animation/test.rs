@@ -1,14 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, UNIX_EPOCH};
-
-    use crate::{
-        model::{
-            animation::animation_controller::{get_scene_animation_data, SceneAnimationController},
-            loader::{self, loader::GltfData},
-        },
-        scene::scene::GSceneData,
-    };
 
     #[test]
     fn test_box() {

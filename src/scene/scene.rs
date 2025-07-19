@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::model::animation::animation_controller::get_scene_animation_data;
 use crate::model::animation::animation_controller::SceneAnimationController;
 use crate::model::loader::loader::GltfData;
 use crate::model::loader::loader::ModelPrimitiveData;
@@ -239,7 +238,6 @@ impl GSceneData {
         let index_vec =
             Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.model_primitive_data, &gltf_data.binary_data);
 
-        get_scene_animation_data(&mut gltf_data.models, &gltf_data.binary_data);
 
         Self {
             models: gltf_data.models,

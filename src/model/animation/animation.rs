@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Debug, rc::Rc, time::Duration};
 use cgmath::SquareMatrix;
 
 use crate::model::{
-    animation::animation_node::{AnimationNode, AnimationSample},
+    animation::{animation_controller::AnimationSample, animation_node::AnimationNode},
     model::ModelAnimationData,
 };
 

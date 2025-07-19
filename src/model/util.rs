@@ -1,5 +1,4 @@
 use crate::{model::model::GMesh, scene::scene::PrimitiveData};
-use bytemuck::AnyBitPattern;
 use gltf::{
     accessor::{DataType, Dimensions},
     Accessor,
@@ -23,7 +22,7 @@ pub enum InitializationError {
     SceneInitializationError,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum AttributeType {
     Position,
     Normal,
@@ -31,11 +30,25 @@ pub enum AttributeType {
     Joints,
     Weights,
     IBMS,
+    Times,
+    RotationT,
+    TranslationT,
+    ScaleT,
+}
+impl AttributeType {
+    pub fn from_animation_channel(channel: &gltf::animation::Channel) -> Self {
+        match channel.target().property() {
+            gltf::animation::Property::Translation => AttributeType::TranslationT,
+            gltf::animation::Property::Rotation => AttributeType::RotationT,
+            gltf::animation::Property::Scale => AttributeType::ScaleT,
+            _ => panic!(),
+        }
+    }
 }
 
 pub fn copy_binary_data_from_gltf(
     accessor: &Accessor,
-    accessor_type: gltf::Semantic,
+    accessor_type: AttributeType,
     buffer_offsets: &Vec<u64>,
     binary_data: &Vec<u8>,
 ) -> Result<Vec<u8>, GltfErrors> {
@@ -66,14 +79,14 @@ pub fn copy_binary_data_from_gltf(
         0
     };
 
-    println!(
-        "{:?}: element size {}, count: {}, offset: {}, stride: {:?}",
-        accessor_type,
-        (byte_size * num_elements),
-        count,
-        byte_offset,
-        view.stride()
-    );
+    //println!(
+    //    "{:?}: element size {}, count: {}, offset: {}, stride: {:?}",
+    //    accessor_type,
+    //    (byte_size * num_elements),
+    //    count,
+    //    byte_offset,
+    //    view.stride()
+    //);
     for _ in 0..count {
         for _ in 0..num_elements {
             for _ in 0..byte_size {

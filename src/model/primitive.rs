@@ -4,7 +4,10 @@ use gltf::Primitive;
 
 use crate::{
     model::{
-        util::{copy_binary_data_from_gltf, get_index_offset_len, GltfErrors, InitializationError},
+        util::{
+            copy_binary_data_from_gltf, get_index_offset_len, AttributeType, GltfErrors,
+            InitializationError,
+        },
         vertex::ModelVertex,
     },
     scene::scene::PrimitiveData,
@@ -102,7 +105,7 @@ impl PrimitiveData {
         };
         let positions = copy_binary_data_from_gltf(
             &position_accessor,
-            gltf::Semantic::Positions,
+            AttributeType::Position,
             buffer_offsets,
             binary_data,
         )?;
@@ -115,7 +118,7 @@ impl PrimitiveData {
         if let Some(normals_accesor) = maybe_normals_accessor {
             normals = Some(copy_binary_data_from_gltf(
                 &normals_accesor,
-                gltf::Semantic::Normals,
+                AttributeType::Normal,
                 buffer_offsets,
                 binary_data,
             )?);
@@ -123,7 +126,7 @@ impl PrimitiveData {
         if let Some(joints_accesor) = maybe_joints0_accessor {
             joints = Some(copy_binary_data_from_gltf(
                 &joints_accesor,
-                gltf::Semantic::Joints(0),
+                AttributeType::Joints,
                 buffer_offsets,
                 binary_data,
             )?);
@@ -131,7 +134,7 @@ impl PrimitiveData {
         if let Some(weights_accesor) = maybe_weights_accessor {
             weights = Some(copy_binary_data_from_gltf(
                 &weights_accesor,
-                gltf::Semantic::Weights(0),
+                AttributeType::Weights,
                 buffer_offsets,
                 binary_data,
             )?);
@@ -179,6 +182,17 @@ impl PrimitiveData {
                     Some(w) => &w[i * 4..i * 4 + 4],
                     None => &[0, 0, 0, 0],
                 };
+                println!("POSITION {:?}", &position_f32[i * 3..i * 3 + 3]);
+                println!(
+                    "JOINTS {:?}",
+                    &[
+                        joints[0] as u8,
+                        joints[1] as u8,
+                        joints[2] as u8,
+                        joints[3] as u8,
+                    ]
+                );
+                println!("WEIGHTS {:?}\n\n", weights);
 
                 return ModelVertex {
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
@@ -200,6 +214,7 @@ impl PrimitiveData {
         input
             .into_iter()
             .map(|x| {
+                assert!(x <= 1.0 && x >= 0.0);
                 let scaled = (x * 255.0).round();
                 scaled.clamp(0.0, 255.0) as u8
             })

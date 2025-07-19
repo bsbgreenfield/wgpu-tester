@@ -233,7 +233,7 @@ impl<'a> AppState<'a> {
             self.gscene.update_camera_pos(0.0, 0.0, -speed);
         }
         if self.input_controller.key_1_down {
-            self.gscene.initialize_animation(0, 0, 0);
+            self.gscene.initialize_animation(1, 0, 0);
             self.input_controller.key_1_down = false;
         }
         if self.input_controller.key_2_down {

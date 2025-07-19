@@ -1,66 +1,6 @@
 use cgmath::{Matrix4, Quaternion, Vector3, Vector4};
 use gltf::accessor::DataType;
 
-use crate::model::animation::animation_node::AnimationNode;
-
-pub(super) fn copy_data_for_animation(
-    animation_node: &mut AnimationNode,
-    model_id: usize,
-    main_buffer_data: &Vec<u8>,
-) {
-    if let Some(sampler_map) = &mut animation_node.samplers {
-        for sample_set in sampler_map {
-            for sampler in sample_set.1 {
-                let times_slice = bytemuck::cast_slice::<u8, f32>(
-                    &main_buffer_data[(sampler.times[0] as usize)
-                        ..((sampler.times[0] + sampler.times[1]) as usize)],
-                );
-                match sampler.animation_type {
-                    AnimationType::Rotation => {
-                        let transforms_slice = bytemuck::cast_slice::<u8, [f32; 4]>(
-                            &main_buffer_data[(sampler.transforms[0][0] as usize)
-                                ..((sampler.transforms[0][0] + sampler.transforms[0][1]) as usize)],
-                        );
-                        sampler.transforms = transforms_slice.to_vec();
-                    }
-                    AnimationType::Translation | AnimationType::Scale => {
-                        let mut padded_slices: Vec<[f32; 4]> = Vec::new();
-                        let transforms_slice = bytemuck::cast_slice::<u8, [f32; 3]>(
-                            &main_buffer_data[(sampler.transforms[0][0] as usize)
-                                ..((sampler.transforms[0][0] + sampler.transforms[0][1]) as usize)],
-                        );
-                        for slice in transforms_slice.iter() {
-                            padded_slices.push([slice[0], slice[1], slice[2], 0.0]);
-                        }
-                        sampler.transforms = padded_slices;
-                    }
-                }
-                sampler.times = times_slice.to_vec();
-                assert_eq!(
-                    sampler.times.len(),
-                    sampler.transforms.len(),
-                    "There should be an equal number of keyframe times as transforms {:?}",
-                    sampler.animation_type
-                );
-            }
-        }
-    }
-    for child_node in animation_node.children.iter_mut() {
-        copy_data_for_animation(child_node, model_id, main_buffer_data);
-    }
-}
-pub(super) fn get_animation_times(
-    times_accessor: &gltf::Accessor,
-    buffer_offsets: &Vec<u64>,
-) -> (usize, usize) {
-    assert_eq!(times_accessor.data_type(), DataType::F32);
-    let buffer_view = times_accessor.view().unwrap();
-    let buffer_offset = buffer_offsets[buffer_view.buffer().index()] as usize;
-    let length = times_accessor.count() * 4;
-    let offset = times_accessor.offset() + (buffer_view.offset()) + buffer_offset;
-    (offset, length)
-}
-
 pub(super) fn get_animation_transforms(
     transforms_accessor: &gltf::Accessor,
     buffer_offsets: &Vec<u64>,
@@ -110,13 +50,13 @@ impl AnimationType {
     }
 }
 #[derive(Debug, Clone, Copy)]
-pub enum Interpolation {
+pub enum InterpolationType {
     Linear,
 }
-impl From<gltf::animation::Interpolation> for Interpolation {
+impl From<gltf::animation::Interpolation> for InterpolationType {
     fn from(value: gltf::animation::Interpolation) -> Self {
         match value {
-            gltf::animation::Interpolation::Linear => Interpolation::Linear,
+            gltf::animation::Interpolation::Linear => InterpolationType::Linear,
             _ => todo!(),
         }
     }

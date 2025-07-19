@@ -6,14 +6,14 @@ use std::{
 };
 
 use base64::Engine;
-use cgmath::{Matrix, SquareMatrix, Transform};
+use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
     animation::animation_node::{AnimationNode, NodeType},
     loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData},
     model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData},
-    util::{copy_binary_data_from_gltf, get_model_meshes},
+    util::{copy_binary_data_from_gltf, get_model_meshes, AttributeType},
 };
 
 struct ModelData {
@@ -119,7 +119,7 @@ fn get_inverse_bind_matrices(
     let ibm_vec = bytemuck::cast_slice(
         &copy_binary_data_from_gltf(
             &ibm_accessor,
-            gltf::Semantic::Tangents,
+            AttributeType::IBMS,
             buffer_offsets,
             main_buffer_data,
         )
@@ -177,6 +177,7 @@ pub(super) fn load_models_from_gltf<'a>(
             animations,
             &model_data.joint_data.joint_ids,
             &buffer_offsets,
+            &main_buffer_data,
         );
 
         // instantiate meshes, instantiate model
@@ -267,6 +268,7 @@ fn load_animations(
     animations: &gltf::iter::Animations,
     joint_ids: &Vec<usize>,
     buffer_offsets: &Vec<u64>,
+    main_buffer_data: &Vec<u8>,
 ) -> (Option<AnimationNode>, usize, Vec<usize>) {
     let mut animation_count = 0;
     let mut has_mesh = false;
@@ -275,7 +277,12 @@ fn load_animations(
     let mut is_animated = false;
     for animation in animations.clone().into_iter() {
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
-        if animation_node.attach_sampler_sets(&channels, &mut is_animated, buffer_offsets) {
+        if animation_node.attach_sampler_sets(
+            &channels,
+            &mut is_animated,
+            buffer_offsets,
+            main_buffer_data,
+        ) {
             animation_count += 1;
         }
         if has_mesh && is_animated {
