@@ -4,6 +4,7 @@ use std::time::Duration;
 use crate::model::animation::animation_controller::SceneAnimationController;
 use crate::model::loader::loader::GltfData;
 use crate::model::loader::loader::ModelPrimitiveData;
+use crate::model::materials::material::MaterialDefinition;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
@@ -17,14 +18,16 @@ pub struct PrimitiveData {
     pub mesh_id: usize,
     pub positions: Vec<u8>,
     pub indices_offset: usize,
+    pub tex_coords: Option<Vec<u8>>,
     pub indices_len: usize,
     pub normals: Option<Vec<u8>>,
     pub joints: Option<Vec<u8>>,
     pub weights: Option<Vec<u8>>,
 }
 
-pub struct GScene {
+pub struct GScene<'a> {
     pub models: Vec<GModel>,
+    pub material_definitions: Vec<MaterialDefinition<'a>>,
     vertex_data: VertexData,
     index_data: IndexData,
     pub(super) instance_data: InstanceData,
@@ -32,7 +35,7 @@ pub struct GScene {
     animation_controller: SceneAnimationController,
 }
 
-impl GScene {
+impl<'a> GScene<'a> {
     pub fn get_animation_frame(&mut self, timestamp: Duration) -> bool {
         let maybe_animation_frame = self.animation_controller.do_animations(timestamp, &self.models);
         match maybe_animation_frame {
@@ -175,17 +178,18 @@ impl GScene {
 }
 
 /// an uninitialized scene
-pub struct GSceneData {
+pub struct GSceneData<'a> {
     pub models: Vec<GModel>,
     vertex_vec: Vec<ModelVertex>,
     index_vec: Vec<u16>,
+    material_definitions: Vec<MaterialDefinition<'a>>,
     local_transforms: Vec<LocalTransform>,
     joint_transforms: Vec<[[f32;4];4]>,
     skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
 }
 
-impl GSceneData {
-    pub fn build_scene_init(self, device: &wgpu::Device, aspect_ratio: f32) -> GScene {
+impl<'a> GSceneData<'a> {
+    pub fn build_scene_init(self, device: &'a wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
         let mut scene = self.build_scene_uninit();
         scene.init(device, aspect_ratio);
         scene
@@ -196,7 +200,7 @@ impl GSceneData {
         device: &wgpu::Device,
         aspect_ratio: f32,
         scaffold: &SceneScaffold,
-    ) -> Result<GScene, InitializationError> {
+    ) -> Result<GScene<'a>, InitializationError> {
         let instance_data =
             InstanceData::from_scaffold(scaffold, self.local_transforms,self.joint_transforms, &self.models, )?;
         let vertex_data = VertexData::from_data(self.vertex_vec);
@@ -205,6 +209,7 @@ impl GSceneData {
         let mut scene = GScene {
             animation_controller,
             models: self.models,
+            material_definitions: self.material_definitions,
             vertex_data,
             instance_data,
             index_data,
@@ -213,7 +218,7 @@ impl GSceneData {
         scene.init(device, aspect_ratio);
         return Ok(scene);
     }
-    pub fn build_scene_uninit(self) -> GScene {
+    pub fn build_scene_uninit(self) -> GScene<'a> {
         let instance_data = InstanceData::default_from_scene(&self.models, self.local_transforms, self.joint_transforms);
         let vertex_data = VertexData::from_data(self.vertex_vec);
         let index_data = IndexData::from_data(self.index_vec);
@@ -221,6 +226,7 @@ impl GSceneData {
 
         GScene {
             models: self.models,
+            material_definitions: self.material_definitions,
             vertex_data,
             instance_data,
             index_data,
@@ -229,7 +235,7 @@ impl GSceneData {
         }
     }
 
-    pub fn new(mut gltf_data: GltfData) -> Self {
+    pub fn new(mut gltf_data: GltfData<'a>) -> Self {
         // build out vertex and index data from the models, meshes, and primitives by referencing
         // the main blob
         let vertex_vec =
@@ -241,6 +247,7 @@ impl GSceneData {
 
         Self {
             models: gltf_data.models,
+            material_definitions: gltf_data.material_definitions,
             vertex_vec,
             index_vec,
             local_transforms: gltf_data.local_transforms,

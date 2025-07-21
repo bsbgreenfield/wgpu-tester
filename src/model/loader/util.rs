@@ -10,10 +10,7 @@ use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
-    animation::animation_node::{AnimationNode, NodeType},
-    loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData},
-    model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData},
-    util::{copy_binary_data_from_gltf, get_model_meshes, AttributeType},
+    animation::animation_node::{AnimationNode, NodeType}, loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData}, materials::material::MaterialDefinition, model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData}, util::{copy_binary_data_from_gltf, get_model_meshes, AttributeType}
 };
 
 struct ModelData {
@@ -135,22 +132,20 @@ fn get_inverse_bind_matrices(
 
 pub(super) fn load_models_from_gltf<'a>(
     root_nodes_ids: Vec<usize>,
-    nodes: gltf::iter::Nodes<'a>,
-    animations: &gltf::iter::Animations,
-    buffers: &gltf::iter::Buffers,
-    skins: &gltf::iter::Skins,
+    gltf: &Gltf,
     main_buffer_data: Vec<u8>,
-) -> GltfData {
-    let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
+    material_definitions: Vec<MaterialDefinition<'a>>,
+) -> GltfData<'a> {
+    let nodes: Vec<_> = gltf.nodes().collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
     let mut model_primitive_data: Vec<ModelPrimitiveData> = Vec::new();
     let mut local_transform_data = Vec::<LocalTransform>::new();
     let mut joint_transform_data = Vec::<[[f32; 4]; 4]>::new();
     let mut joint_ids = Vec::<usize>::new();
     let mut skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>> =
-        HashMap::with_capacity(skins.len());
-    let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
-    for skin in skins.clone().into_iter() {
+        HashMap::with_capacity(gltf.skins().len());
+    let buffer_offsets: Vec<u64> = get_buffer_offsets(&gltf.buffers());
+    for skin in gltf.skins().clone().into_iter() {
         let (skin_idx, ibms) = get_inverse_bind_matrices(&skin, &buffer_offsets, &main_buffer_data);
         skin_ibms.insert(skin_idx, ibms);
         for joint in skin.joints().into_iter() {
@@ -163,7 +158,7 @@ pub(super) fn load_models_from_gltf<'a>(
             joint_data: ModelJointData::default(),
         };
 
-        let root_node: &gltf::Node<'a> = &nodes[*rid];
+        let root_node = &nodes[*rid];
         if root_node.camera().is_some() {
             continue;
         }
@@ -179,7 +174,7 @@ pub(super) fn load_models_from_gltf<'a>(
         // get a animation node trees
         let (maybe_animation_node, animation_count, mesh_animations) = load_animations(
             &root_node,
-            animations,
+            &gltf.animations(),
             &model_data.joint_data.joint_to_joint_index_map,
             &buffer_offsets,
             &main_buffer_data,
@@ -237,6 +232,7 @@ pub(super) fn load_models_from_gltf<'a>(
             model_data.mesh_data.mesh_transform_buckets.len(),
             model_data.mesh_data.mesh_ids.len()
         );
+
         // add the local transformations to the running vec
         for i in 0..model_data.mesh_data.mesh_ids.len() {
             // TODO: avoid copying the data
@@ -253,6 +249,7 @@ pub(super) fn load_models_from_gltf<'a>(
         local_transforms: local_transform_data,
         joint_transforms: joint_transform_data,
         skin_ibms,
+        material_definitions,
     }
 }
 
@@ -343,8 +340,6 @@ fn get_model_data(
                 .mesh_data
                 .mesh_transform_buckets
                 .push(vec![local_transform]);
-
-            //
         }
         let unique_kv = model_data
             .mesh_data
@@ -377,6 +372,26 @@ fn get_model_data(
         model_data = get_model_data(&child_node, new_trans, model_data, joint_ids, skin_ibms);
     }
     model_data
+}
+pub(super) fn get_material_definitions<'a>(
+    nodes: gltf::iter::Nodes,
+    root_nodes_ids: &Vec<usize>,
+    main_buffer_data: &Vec<u8>,
+) -> Vec<MaterialDefinition<'a>> {
+    let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
+    let mut material_defs: Vec<MaterialDefinition> = Vec::new();
+    for root_node in root_nodes_ids.iter() {
+        let rid = *root_node;
+        let root_node = nodes[rid].clone();
+        if let Some(mesh) = root_node.mesh() {
+            for primitive in mesh.primitives() {
+                let material_def: MaterialDefinition =
+                    MaterialDefinition::new(&primitive.material(), main_buffer_data);
+                material_defs.push(material_def);
+            }
+        }
+    }
+    material_defs
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

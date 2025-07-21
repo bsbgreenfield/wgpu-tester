@@ -1,5 +1,7 @@
 use super::app_config::AppConfig;
 use super::util;
+use crate::model::materials::material::GMaterial;
+use crate::model::materials::texture::GTexture;
 use crate::model::model::{GDrawModel, LocalTransform};
 use crate::model::vertex::*;
 use crate::scene::scene::GScene;
@@ -39,10 +41,12 @@ pub enum UpdateResult {
 pub struct AppState<'a> {
     pub app_config: AppConfig<'a>,
     render_pipeline: wgpu::RenderPipeline,
-    pub gscene: GScene,
+    pub gscene: GScene<'a>,
     bind_groups: Vec<wgpu::BindGroup>,
     joint_bind_group: wgpu::BindGroup,
     pub input_controller: InputController,
+    pub materials: Vec<GMaterial>,
+    depth_texture: GTexture,
 }
 
 impl<'a> AppState<'a> {
@@ -55,9 +59,8 @@ impl<'a> AppState<'a> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
         let aspect_ratio = (app_config.size.width / app_config.size.height) as f32;
-
-        let gscene = util::get_scene(&app_config, aspect_ratio);
-
+        let sampler_texture_bgl = AppState::create_diffuse_bgl(&app_config);
+        let mut gscene = util::get_scene(&app_config.device, aspect_ratio);
         let (camera_bind_group_layout, camera_bind_group) =
             gscene.get_camera_bind_group(&app_config.device);
 
@@ -77,6 +80,7 @@ impl<'a> AppState<'a> {
                         &camera_bind_group_layout,
                         &global_instance_bind_group_layout,
                         &joint_bgl,
+                        &sampler_texture_bgl,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -98,22 +102,20 @@ impl<'a> AppState<'a> {
                         targets: &[Some(wgpu::ColorTargetState {
                             format: app_config.config.format,
                             blend: Some(wgpu::BlendState {
-                                color: wgpu::BlendComponent {
-                                    src_factor: wgpu::BlendFactor::One,
-                                    dst_factor: wgpu::BlendFactor::Zero,
-                                    operation: wgpu::BlendOperation::Min,
-                                },
-                                alpha: wgpu::BlendComponent {
-                                    src_factor: wgpu::BlendFactor::One,
-                                    dst_factor: wgpu::BlendFactor::One,
-                                    operation: wgpu::BlendOperation::Add,
-                                },
+                                color: wgpu::BlendComponent::REPLACE,
+                                alpha: wgpu::BlendComponent::REPLACE,
                             }),
                             write_mask: wgpu::ColorWrites::all(),
                         })],
                         compilation_options: Default::default(),
                     }),
-                    depth_stencil: None,
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Less,
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState::default(),
+                    }),
                     cache: None,
                     multiview: None,
                     multisample: wgpu::MultisampleState {
@@ -131,11 +133,25 @@ impl<'a> AppState<'a> {
                         conservative: false,
                     },
                 });
+        let mut materials = Vec::<GMaterial>::new();
+        for m_def in gscene.material_definitions.iter_mut() {
+            materials.push(GMaterial::from_material_definition_with_bgl(
+                m_def,
+                &app_config.device,
+                &sampler_texture_bgl,
+            ));
+        }
+        for material in materials.iter() {
+            material.write_texture_2d(&app_config.queue);
+        }
 
+        let depth_texture = GTexture::create_depth_texture(&app_config.device, &app_config.config);
         Self {
+            materials,
             app_config,
             render_pipeline,
             gscene,
+            depth_texture,
             bind_groups,
             joint_bind_group,
             input_controller: InputController::new(),
@@ -177,6 +193,31 @@ impl<'a> AppState<'a> {
             });
 
         (joint_bind_group_layout, joint_bind_group)
+    }
+    fn create_diffuse_bgl(app_config: &AppConfig) -> wgpu::BindGroupLayout {
+        app_config
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("diffuse bind group layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            })
     }
 
     fn setup_global_instance_bind_group(
@@ -320,7 +361,14 @@ impl<'a> AppState<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -330,7 +378,9 @@ impl<'a> AppState<'a> {
                 render_pass.set_bind_group(idx as u32, Some(bind_group), &[]);
             }
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            for material in self.materials.iter() {
+                render_pass.set_bind_group(3, &material.texture.bind_group, &[]);
+            }
             render_pass.set_vertex_buffer(
                 0,
                 self.gscene.get_vertex_buffer().as_ref().unwrap().slice(..),
@@ -350,6 +400,7 @@ impl<'a> AppState<'a> {
                     .expect("local transform data should be initialized")
                     .slice(..),
             );
+            render_pass.set_pipeline(&self.render_pipeline);
             render_pass.draw_scene(&self.gscene);
         }
         self.app_config
@@ -362,5 +413,7 @@ impl<'a> AppState<'a> {
 
     pub(super) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.app_config.resize(new_size);
+        self.depth_texture =
+            GTexture::create_depth_texture(&self.app_config.device, &self.app_config.config);
     }
 }

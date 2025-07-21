@@ -18,3 +18,8 @@ base64 = "0.22.1"
 
 [dependencies.gltf]
 version = "1.4.1"
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png", "jpeg"]

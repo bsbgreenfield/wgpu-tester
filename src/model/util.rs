@@ -26,6 +26,7 @@ pub enum InitializationError {
 pub enum AttributeType {
     Position,
     Normal,
+    TexCoords,
     Index,
     Joints,
     Weights,

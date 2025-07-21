@@ -1,6 +1,6 @@
 use crate::{model::model::GModel, scene::scene::GScene};
 
-impl GScene {
+impl<'a> GScene<'a> {
     pub fn print_transforms(&self) {
         let mut lt = self.instance_data.local_transform_data.iter();
         for (i, m) in self.models.iter().enumerate() {

@@ -89,6 +89,13 @@ impl PrimitiveData {
             None => (gltf::Semantic::Normals, None),
         };
         let maybe_indices_accessor = primitive.indices();
+        let (_, maybe_tex_coords_accessor) = match primitive
+            .attributes()
+            .find(|a| a.0 == gltf::Semantic::TexCoords(0))
+        {
+            Some(tex_coords) => (tex_coords.0, Some(tex_coords.1)),
+            None => (gltf::Semantic::TexCoords(0), None),
+        };
         let (_, maybe_joints0_accessor) = match primitive
             .attributes()
             .find(|a| a.0 == gltf::Semantic::Joints(0))
@@ -113,12 +120,21 @@ impl PrimitiveData {
             get_index_offset_len(maybe_indices_accessor.as_ref(), buffer_offsets)?
                 .unwrap_or((0, 0));
         let mut normals = None;
+        let mut tex_coords = None;
         let mut joints = None;
         let mut weights = None;
         if let Some(normals_accesor) = maybe_normals_accessor {
             normals = Some(copy_binary_data_from_gltf(
                 &normals_accesor,
                 AttributeType::Normal,
+                buffer_offsets,
+                binary_data,
+            )?);
+        }
+        if let Some(tex_coords_accesor) = maybe_tex_coords_accessor {
+            tex_coords = Some(copy_binary_data_from_gltf(
+                &tex_coords_accesor,
+                AttributeType::TexCoords,
                 buffer_offsets,
                 binary_data,
             )?);
@@ -145,6 +161,7 @@ impl PrimitiveData {
             indices_offset,
             indices_len,
             normals,
+            tex_coords,
             joints,
             weights,
         })
@@ -153,6 +170,10 @@ impl PrimitiveData {
         let position_f32: &[f32] = bytemuck::cast_slice(&self.positions);
         let normals_f32: Option<Vec<f32>> = match &self.normals {
             Some(normals) => Some(bytemuck::cast_slice(normals).to_vec()),
+            None => None,
+        };
+        let tex_coords_f32: Option<Vec<f32>> = match &self.tex_coords {
+            Some(tex_coords) => Some(bytemuck::cast_slice(tex_coords).to_vec()),
             None => None,
         };
         let joints_u16: Option<Vec<u16>> = match &self.joints {
@@ -173,6 +194,10 @@ impl PrimitiveData {
                 let normal = match &normals_f32 {
                     Some(n) => n[i * 3..i * 3 + 3].try_into().unwrap(),
                     None => [0.0, 0.0, 0.0],
+                };
+                let tex = match &tex_coords_f32 {
+                    Some(t) => t[i * 2..i * 2 + 2].try_into().unwrap(),
+                    None => [0.0, 0.0],
                 };
                 let joints = match &joints_u16 {
                     Some(j) => j[i * 4..i * 4 + 4].try_into().unwrap(),
@@ -201,7 +226,8 @@ impl PrimitiveData {
 
                 return ModelVertex {
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
-                    normal: normal.try_into().unwrap(),
+                    normal: normal,
+                    tex_coords: tex,
                     joints: [
                         joints[0] as u8,
                         joints[1] as u8,

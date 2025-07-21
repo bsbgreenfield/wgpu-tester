@@ -1,8 +1,9 @@
 struct VertexInput {
   @location(0) position: vec3<f32>,
   @location(1) normal: vec3<f32>,
-  @location(2) joints: vec4<u32>,
-  @location(3) weights: vec4<f32>,
+  @location(2) tex_coords: vec2<f32>,
+  @location(3) joints: vec4<u32>,
+  @location(4) weights: vec4<f32>,
 }
 
 struct InstanceInput {
@@ -19,7 +20,7 @@ struct GlobalTransforms{
 }
 struct VertexOutput {
   @builtin(position) clip_position: vec4<f32>,
-  @location(0) color: vec3<f32>,
+  @location(0) tex_coords: vec2<f32>,
 }
 
 struct CameraUniform {
@@ -51,6 +52,11 @@ fn apply_bone_transform(joints: vec4<u32>, weights: vec4<f32>, position: vec3<f3
 	let result: vec4<f32> = skin_mat * vec4<f32>(position, 1.0);
 	return result;
 } 
+@group(3) @binding(0)
+var t_diffuse: texture_2d<f32>;
+@group(3) @binding(1)
+var s_diffuse: sampler;
+
 
 @vertex
 fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
@@ -64,13 +70,11 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
     var out: VertexOutput;
 	let new_position: vec4<f32> = apply_bone_transform(obj.joints, obj.weights, obj.position);
     out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  *  new_position;
-
-    var color: vec3<f32> = vec3<f32>(0.5, 0.2, 0.7);
-	out.color = color; 
+	out.tex_coords = obj.tex_coords;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+	return textureSample(t_diffuse, s_diffuse, in.tex_coords);
 }

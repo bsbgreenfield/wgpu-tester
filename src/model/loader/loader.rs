@@ -3,9 +3,8 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::{
     model::{
         loader::util::{
-            decode_gltf_data_uri, get_data_files, get_root_nodes, load_models_from_gltf,
-        },
-        model::{GModel, LocalTransform},
+            decode_gltf_data_uri, get_data_files, get_material_definitions, get_root_nodes, load_models_from_gltf
+        }, materials::material::MaterialDefinition, model::{GModel, LocalTransform}
     },
     scene::scene::PrimitiveData,
 };
@@ -46,16 +45,16 @@ impl GltfLoader {
         };
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
         let nodes = gltf.nodes();
-        let gltf_data: GltfData = load_models_from_gltf(
-            root_node_ids,
-            nodes,
-            &gltf.animations(),
-            &gltf.buffers(),
-            &gltf.skins(),
-            binary_data,
-        );
+        let material_definitions: Vec<MaterialDefinition> =
+            get_material_definitions(nodes.clone(), &root_node_ids, &binary_data);
+         let gltf_data: GltfData = load_models_from_gltf(
+             root_node_ids,
+             &gltf,
+             binary_data,
+             material_definitions,
+         );
 
-        Ok(gltf_data)
+         Ok(gltf_data)
     }
 }
 
@@ -64,10 +63,11 @@ pub struct ModelPrimitiveData {
     pub primitive_data: Vec<PrimitiveData>,
 }
 
-pub struct GltfData {
+pub struct GltfData<'a> {
     pub models: Vec<GModel>,
     pub binary_data: Vec<u8>,
     pub model_primitive_data: Vec<ModelPrimitiveData>,
+    pub material_definitions: Vec<MaterialDefinition<'a>>,
     pub local_transforms: Vec<LocalTransform>,
     pub joint_transforms: Vec<[[f32; 4]; 4]>,
     pub skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
