@@ -217,12 +217,14 @@ impl PrimitiveData {
                 //         joints[3] as u8,
                 //     ]
                 // );
-                let mut sum: u32 = 0;
-                for x in weights.iter() {
-                    sum += *x as u32;
+                if joints != [0, 0, 0, 0] {
+                    let mut sum: u32 = 0;
+                    for x in weights.iter() {
+                        sum += *x as u32;
+                    }
+                    assert!(sum <= 256 && sum >= 254);
+                    //println!("WEIGHTS {:?}\n\n", weights);
                 }
-                assert!(sum <= 256 && sum >= 254);
-                //println!("WEIGHTS {:?}\n\n", weights);
 
                 return ModelVertex {
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),

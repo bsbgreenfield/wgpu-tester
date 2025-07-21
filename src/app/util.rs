@@ -69,5 +69,5 @@ pub(super) async fn setup_config<'a>(window: Arc<Window>) -> AppConfig<'a> {
 }
 
 pub(super) fn get_scene<'a>(device: &wgpu::Device, aspect_ratio: f32) -> GScene<'a> {
-    FOX.create(device, aspect_ratio).unwrap()
+    BOX_ANIMATED.create(device, aspect_ratio).unwrap()
 }
