@@ -49,7 +49,7 @@ impl AttributeType {
 
 pub fn copy_binary_data_from_gltf(
     accessor: &Accessor,
-    accessor_type: AttributeType,
+    _accessor_type: AttributeType,
     buffer_offsets: &Vec<u64>,
     binary_data: &Vec<u8>,
 ) -> Result<Vec<u8>, GltfErrors> {

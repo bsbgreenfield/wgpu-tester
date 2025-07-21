@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::scene::scene_scaffolds::CMAN;
 #[allow(unused_imports)]
 use crate::scene::scene_scaffolds::{BOX_ANIMATED, BUGGY, FLEXY_BOX, FOX, MONKEY, POLLY};
 #[allow(unused_imports)]
