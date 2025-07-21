@@ -181,7 +181,7 @@ pub struct GSceneData {
     index_vec: Vec<u16>,
     local_transforms: Vec<LocalTransform>,
     joint_transforms: Vec<[[f32;4];4]>,
-    skin_ibms: HashMap<usize, Vec<[[f32;4];4]>>,
+    skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
 }
 
 impl GSceneData {

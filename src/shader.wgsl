@@ -62,9 +62,6 @@ fn vs_main(obj: VertexInput, instance: InstanceInput) -> VertexOutput {
     );
 	let global_t_matrix = global_transforms.transforms[instance.model_index];
     var out: VertexOutput;
-
-	//let joints: vec4<f32> = unpack4x8unorm(obj.joints);
-	//let weights: vec4<f32>  = unpack4x8unorm(obj.weights);
 	let new_position: vec4<f32> = apply_bone_transform(obj.joints, obj.weights, obj.position);
     out.clip_position = camera_uniform.transform * global_t_matrix * obj_matrix  *  new_position;
 

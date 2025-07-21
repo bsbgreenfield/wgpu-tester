@@ -31,6 +31,7 @@ pub struct ModelAnimationData {
     pub animation_count: usize,
     pub mesh_animation_data: MeshAnimationData,
     pub joint_animation_data: JointAnimationData,
+    pub is_skeletal: bool,
 }
 
 impl Debug for ModelAnimationData {

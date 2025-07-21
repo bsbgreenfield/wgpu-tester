@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use cgmath::{InnerSpace, SquareMatrix};
 use gltf::{animation::Channel, Node};
 
 use crate::model::{
@@ -22,7 +23,9 @@ pub enum NodeType {
 type ModelAnimationMap = HashMap<usize, Vec<AnimationSampler>>;
 pub struct AnimationNode {
     pub children: Vec<AnimationNode>,
-    transform: cgmath::Matrix4<f32>,
+    pub rot: cgmath::Quaternion<f32>,
+    pub trans: cgmath::Vector3<f32>,
+    pub scale: cgmath::Vector3<f32>,
     pub samplers: Option<ModelAnimationMap>,
     pub node_type: NodeType,
     pub(super) node_id: usize,
@@ -53,10 +56,15 @@ impl AnimationNode {
         mesh_transforms: &mut Vec<[[f32; 4]; 4]>,
         joint_transforms: &mut Vec<[[f32; 4]; 4]>,
     ) {
+        let t = cgmath::Matrix4::<f32>::from_translation(self.trans);
+        let r = cgmath::Matrix4::<f32>::from(self.rot);
+        let s =
+            cgmath::Matrix4::<f32>::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z);
+        let transform = t * r * s;
         match self.node_type {
-            NodeType::Mesh => mesh_transforms.push(self.transform.into()),
-            NodeType::Joint(joint_idx) => {
-                joint_transforms.push(self.transform.into());
+            NodeType::Mesh => mesh_transforms.push(transform.into()),
+            NodeType::Joint(_) => {
+                joint_transforms.push(transform.into());
             }
 
             NodeType::Node => {}
@@ -77,6 +85,7 @@ impl AnimationNode {
             .iter()
             .filter(|c| c.target().node().index() == self.node_id)
             .collect();
+        assert!(relevant_channels.len() <= 3);
         let maybe_samplers: Option<Vec<AnimationSampler>> =
             AnimationSampler::from_channels(&relevant_channels, buffer_offsets, main_buffer_data);
         if let Some(samplers) = maybe_samplers {
@@ -115,7 +124,7 @@ impl AnimationNode {
         instance: &mut AnimationInstance,
         base_translation: cgmath::Matrix4<f32>,
         animation_data: &ModelAnimationData,
-        skin_ibms: &HashMap<usize, Vec<[[f32; 4]; 4]>>,
+        skin_ibms: &HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
     ) -> bool {
         let mut node_is_done: bool = true;
 
@@ -172,7 +181,7 @@ impl AnimationNode {
 
                                     let t_diff = first_scale - second_scale;
                                     let t_interp = t_diff * amount;
-                                    translation = Some(first_scale + t_interp);
+                                    scale = Some(first_scale + t_interp);
                                 }
                             }
                             *instance.current_samples.get_mut(&sampler.id).unwrap() =
@@ -195,76 +204,97 @@ impl AnimationNode {
                     }
                 }
                 current_frame_transform = Some(
-                    cgmath::Matrix4::from_translation(translation.unwrap_or(NO_TRANSLATION))
-                        * cgmath::Matrix4::from(rotation.unwrap_or(NO_ROTATION))
+                    cgmath::Matrix4::from_translation(translation.unwrap_or(self.trans))
+                        * cgmath::Matrix4::from(rotation.unwrap_or(self.rot))
                         * match scale {
                             Some(s) => cgmath::Matrix4::<f32>::from_nonuniform_scale(s.x, s.y, s.z),
-                            None => IDENTITY,
+                            None => cgmath::Matrix4::<f32>::from_nonuniform_scale(
+                                self.scale[0],
+                                self.scale[1],
+                                self.scale[2],
+                            ),
                         },
                 );
             }
         }
-        let new_base_transform = match self.node_type {
+
+        let animation_transform = current_frame_transform.unwrap_or(self.static_transform());
+
+        let global = base_translation * animation_transform;
+        match self.node_type {
             NodeType::Mesh => {
-                let nbt = base_translation * current_frame_transform.unwrap_or(self.transform);
                 let mesh_id = animation_data
                     .mesh_animation_data
                     .node_to_lt_index
                     .get(&self.node_id)
                     .unwrap();
-                instance.mesh_transforms[*mesh_id] = nbt.into();
-                nbt
+                if animation_data.is_skeletal {
+                    instance.mesh_transforms[*mesh_id] = cgmath::Matrix4::<f32>::identity().into();
+                } else {
+                    instance.mesh_transforms[*mesh_id] = global.into();
+                }
             }
             NodeType::Joint(ibm_idx) => {
-                // get the inverse bind matrix for this joint
-                let inverse_bind_matrix: cgmath::Matrix4<f32> = skin_ibms[&0][ibm_idx].into();
+                let inverse_bind_matrix: cgmath::Matrix4<f32> = skin_ibms.get(&0).unwrap()[ibm_idx];
                 // get the index of this joint within the joint transforms buffer
-                let joint_index = animation_data
-                    .joint_animation_data
-                    .joint_to_joint_index
-                    .get(&self.node_id)
-                    .unwrap();
-
-                // caluculate the globa transform of this joint node
-                let local_transform = current_frame_transform.unwrap_or(self.transform);
-                let global_transform = base_translation * local_transform;
-                instance.joint_transforms[*joint_index] =
-                    (global_transform * inverse_bind_matrix).into();
-
-                global_transform // this is the value we will use in the next recursion step
+                instance.joint_transforms[ibm_idx] = (global * inverse_bind_matrix).into();
             }
-            NodeType::Node => base_translation * current_frame_transform.unwrap_or(self.transform),
-        };
+            NodeType::Node => {}
+        }
         // apply the new transform to the base translation using the optional TRS components
         // assign the mesh transform to the proper slot for this in.stance
         // if any one of the child nodes is still processing, set done to false
         for child_node in &self.children {
-            if !child_node.update_node_transforms(
-                instance,
-                new_base_transform,
-                animation_data,
-                skin_ibms,
-            ) {
+            if !child_node.update_node_transforms(instance, global, animation_data, skin_ibms) {
                 node_is_done = false;
             }
         }
         node_is_done
     }
 
-    pub fn new(node: &Node, children: Vec<AnimationNode>, joint_ids: &Vec<usize>) -> Self {
-        match joint_ids.binary_search(&node.index()) {
-            Ok(ibm_idx) => AnimationNode {
+    fn static_transform(&self) -> cgmath::Matrix4<f32> {
+        let a = cgmath::Matrix4::<f32>::from_translation(self.trans)
+            * cgmath::Matrix4::<f32>::from(self.rot)
+            * cgmath::Matrix4::<f32>::from_nonuniform_scale(
+                self.scale[0],
+                self.scale[1],
+                self.scale[2],
+            );
+        //println!("{:?}", a.x);
+        //println!("{:?}", a.y);
+        //println!("{:?}", a.z);
+        //println!("{:?}\n\n", a.w);
+        a
+    }
+
+    pub fn new(
+        node: &Node,
+        children: Vec<AnimationNode>,
+        joint_to_joint_indices: &HashMap<usize, usize>,
+    ) -> Self {
+        let decomposed = node.transform().decomposed();
+        let t = decomposed.0;
+        let r = decomposed.1;
+        let s = decomposed.2;
+        let trans = cgmath::Vector3::<f32>::new(t[0], t[1], t[2]);
+        let rot = cgmath::Quaternion::<f32>::new(r[3], r[0], r[1], r[2]);
+        let scale = cgmath::Vector3::<f32>::new(s[0], s[1], s[2]);
+        match joint_to_joint_indices.get(&node.index()) {
+            Some(joint_index) => AnimationNode {
                 children,
                 samplers: None,
-                transform: cgmath::Matrix4::from(node.transform().matrix()),
-                node_type: NodeType::Joint(ibm_idx),
+                trans,
+                rot,
+                scale,
+                node_type: NodeType::Joint(*joint_index),
                 node_id: node.index(),
             },
-
-            Err(_) => match node.mesh() {
+            None => match node.mesh() {
                 Some(_) => AnimationNode {
                     children,
-                    transform: cgmath::Matrix4::from(node.transform().matrix()),
+                    trans,
+                    rot,
+                    scale,
                     samplers: None,
                     node_type: NodeType::Mesh,
                     node_id: node.index(),
@@ -272,7 +302,9 @@ impl AnimationNode {
 
                 None => AnimationNode {
                     children,
-                    transform: cgmath::Matrix4::from(node.transform().matrix()),
+                    trans,
+                    rot,
+                    scale,
                     samplers: None,
                     node_type: NodeType::Node,
                     node_id: node.index(),
@@ -285,7 +317,7 @@ impl AnimationNode {
         println!("node {}", self.node_id);
         if let Some(samplers) = &self.samplers {
             for entry in samplers {
-                println!("{}: {}", entry.0, entry.1.len());
+                println!("     Animation #{}: {} sampler(s)", entry.0, entry.1.len());
             }
         }
         if self.children.len() > 0 {

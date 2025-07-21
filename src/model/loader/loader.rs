@@ -70,7 +70,7 @@ pub struct GltfData {
     pub model_primitive_data: Vec<ModelPrimitiveData>,
     pub local_transforms: Vec<LocalTransform>,
     pub joint_transforms: Vec<[[f32; 4]; 4]>,
-    pub skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>,
+    pub skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
 }
 
 #[derive(Debug)]

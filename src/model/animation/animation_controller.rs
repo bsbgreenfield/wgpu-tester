@@ -23,11 +23,11 @@ pub struct SceneAnimationController {
     dead_animations: Vec<usize>,
     pub(super) active_animations: Vec<VecDeque<AnimationInstance>>,
     pub(super) active_animation_count: usize,
-    pub(super) skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>,
+    pub(super) skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
 }
 
 impl SceneAnimationController {
-    pub fn new(model_no: usize, skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>>) -> Self {
+    pub fn new(model_no: usize, skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>>) -> Self {
         let mut active_animations = Vec::with_capacity(model_no);
         for _ in 0..model_no {
             active_animations.push(VecDeque::with_capacity(10));

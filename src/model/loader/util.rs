@@ -94,14 +94,14 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
 
 fn build_animation_node_tree(
     node: &gltf::Node,
-    joint_ids: &Vec<usize>,
+    joint_to_joint_indices: &HashMap<usize, usize>,
     has_mesh: &mut bool,
 ) -> AnimationNode {
     let children: Vec<AnimationNode> = node
         .children()
-        .map(|child| build_animation_node_tree(&child, joint_ids, has_mesh))
+        .map(|child| build_animation_node_tree(&child, joint_to_joint_indices, has_mesh))
         .collect();
-    let node = AnimationNode::new(node, children, joint_ids);
+    let node = AnimationNode::new(node, children, joint_to_joint_indices);
     if node.node_type == NodeType::Mesh {
         *has_mesh = true;
     }
@@ -112,11 +112,11 @@ fn get_inverse_bind_matrices(
     skin: &gltf::Skin,
     buffer_offsets: &Vec<u64>,
     main_buffer_data: &Vec<u8>,
-) -> (usize, Vec<[[f32; 4]; 4]>) {
+) -> (usize, Vec<cgmath::Matrix4<f32>>) {
     let ibm_accessor = skin
         .inverse_bind_matrices()
         .expect("should be an accessor for ibms");
-    let ibm_vec = bytemuck::cast_slice(
+    let ibm_vec: Vec<[[f32; 4]; 4]> = bytemuck::cast_slice(
         &copy_binary_data_from_gltf(
             &ibm_accessor,
             AttributeType::IBMS,
@@ -126,7 +126,11 @@ fn get_inverse_bind_matrices(
         .expect("should be ibm data"),
     )
     .to_vec();
-    (skin.index(), ibm_vec)
+    let ibm_cgmath: Vec<cgmath::Matrix4<f32>> = ibm_vec
+        .iter()
+        .map(|ibm| cgmath::Matrix4::<f32>::from(*ibm))
+        .collect();
+    (skin.index(), ibm_cgmath)
 }
 
 pub(super) fn load_models_from_gltf<'a>(
@@ -143,7 +147,8 @@ pub(super) fn load_models_from_gltf<'a>(
     let mut local_transform_data = Vec::<LocalTransform>::new();
     let mut joint_transform_data = Vec::<[[f32; 4]; 4]>::new();
     let mut joint_ids = Vec::<usize>::new();
-    let mut skin_ibms: HashMap<usize, Vec<[[f32; 4]; 4]>> = HashMap::with_capacity(skins.len());
+    let mut skin_ibms: HashMap<usize, Vec<cgmath::Matrix4<f32>>> =
+        HashMap::with_capacity(skins.len());
     let buffer_offsets: Vec<u64> = get_buffer_offsets(buffers);
     for skin in skins.clone().into_iter() {
         let (skin_idx, ibms) = get_inverse_bind_matrices(&skin, &buffer_offsets, &main_buffer_data);
@@ -175,7 +180,7 @@ pub(super) fn load_models_from_gltf<'a>(
         let (maybe_animation_node, animation_count, mesh_animations) = load_animations(
             &root_node,
             animations,
-            &model_data.joint_data.joint_ids,
+            &model_data.joint_data.joint_to_joint_index_map,
             &buffer_offsets,
             &main_buffer_data,
         );
@@ -206,6 +211,7 @@ pub(super) fn load_models_from_gltf<'a>(
                     animation_count,
                     model_index: models.len(),
                     animation_node: Rc::new(animation_node),
+                    is_skeletal: joint_count > 0,
                     mesh_animation_data: MeshAnimationData {
                         mesh_animations,
                         node_to_lt_index: model_data.mesh_data.node_to_lt_index_map,
@@ -266,14 +272,15 @@ fn get_buffer_offsets(buffers: &gltf::iter::Buffers) -> Vec<u64> {
 fn load_animations(
     root_node: &gltf::Node,
     animations: &gltf::iter::Animations,
-    joint_ids: &Vec<usize>,
+    joint_to_joint_indices: &HashMap<usize, usize>,
     buffer_offsets: &Vec<u64>,
     main_buffer_data: &Vec<u8>,
 ) -> (Option<AnimationNode>, usize, Vec<usize>) {
     let mut animation_count = 0;
     let mut has_mesh = false;
     let mut mesh_animations: Vec<usize> = Vec::new();
-    let mut animation_node = build_animation_node_tree(root_node, joint_ids, &mut has_mesh);
+    let mut animation_node =
+        build_animation_node_tree(root_node, joint_to_joint_indices, &mut has_mesh);
     let mut is_animated = false;
     for animation in animations.clone().into_iter() {
         let channels: Vec<Channel> = animation.channels().into_iter().collect();
@@ -306,10 +313,10 @@ fn get_model_data(
     base_translation: cgmath::Matrix4<f32>,
     mut model_data: ModelData,
     joint_ids: &Vec<usize>,
-    skin_ibms: &HashMap<usize, Vec<[[f32; 4]; 4]>>,
+    skin_ibms: &HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
 ) -> ModelData {
     let cg_trans = cgmath::Matrix4::<f32>::from(root_node.transform().matrix());
-    let mut new_trans = base_translation * cg_trans;
+    let new_trans = base_translation * cg_trans;
     if let Some(mesh) = root_node.mesh() {
         let mut transform_index = 0;
         'block: {
@@ -345,12 +352,15 @@ fn get_model_data(
             .insert(root_node.index(), transform_index);
         assert!(unique_kv.is_none()); // each node should be unique
     } else {
-        match joint_ids.binary_search(&root_node.index()) {
-            Ok(_) => {
+        match joint_ids
+            .iter()
+            .position(|joint_id| joint_id == &root_node.index())
+        {
+            Some(joint_index) => {
                 model_data
                     .joint_data
                     .joint_to_joint_index_map
-                    .insert(root_node.index(), model_data.joint_data.joint_ids.len());
+                    .insert(root_node.index(), joint_index);
                 model_data.joint_data.joint_ids.push(root_node.index());
                 let ibm: cgmath::Matrix4<f32> =
                     skin_ibms.get(&0).unwrap()[joint_ids.len() - 1].into();
@@ -359,7 +369,7 @@ fn get_model_data(
                     .joint_pose_transforms
                     .push((cgmath::Matrix4::<f32>::identity()).into());
             }
-            Err(_) => {}
+            None => {}
         }
     }
 

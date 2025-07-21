@@ -182,17 +182,22 @@ impl PrimitiveData {
                     Some(w) => &w[i * 4..i * 4 + 4],
                     None => &[0, 0, 0, 0],
                 };
-                println!("POSITION {:?}", &position_f32[i * 3..i * 3 + 3]);
-                println!(
-                    "JOINTS {:?}",
-                    &[
-                        joints[0] as u8,
-                        joints[1] as u8,
-                        joints[2] as u8,
-                        joints[3] as u8,
-                    ]
-                );
-                println!("WEIGHTS {:?}\n\n", weights);
+                // println!("POSITION {:?}", &position_f32[i * 3..i * 3 + 3]);
+                // println!(
+                //     "JOINTS {:?}",
+                //     &[
+                //         joints[0] as u8,
+                //         joints[1] as u8,
+                //         joints[2] as u8,
+                //         joints[3] as u8,
+                //     ]
+                // );
+                let mut sum: u32 = 0;
+                for x in weights.iter() {
+                    sum += *x as u32;
+                }
+                assert!(sum <= 256 && sum >= 254);
+                //println!("WEIGHTS {:?}\n\n", weights);
 
                 return ModelVertex {
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),

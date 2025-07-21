@@ -78,7 +78,7 @@ impl AnimationInstance {
         &'a mut self,
         timestamp: Duration,
         animation_data: &'a ModelAnimationData,
-        skin_ibms: &HashMap<usize, Vec<[[f32; 4]; 4]>>,
+        skin_ibms: &HashMap<usize, Vec<cgmath::Matrix4<f32>>>,
     ) -> AnimationProcessingResult<'a> {
         self.time_elapsed = timestamp - self.start_time;
         // im not sure if there a good way to do this without cloning the node RC
