@@ -8,11 +8,12 @@ use crate::model::materials::material::MaterialDefinition;
 use crate::model::model::*;
 use crate::model::util::*;
 use crate::model::vertex::ModelVertex;
+use crate::scene::camera::get_camera_bind_group_layout;
 use crate::scene::scene_scaffolds::SceneScaffold;
 use wgpu::util::DeviceExt;
 
 use super::camera::Camera;
-use super::camera::{get_camera_bind_group, get_camera_default};
+use super::camera:: get_camera_default;
 use super::instances::InstanceData;
 pub struct PrimitiveData {
     pub mesh_id: usize,
@@ -127,9 +128,9 @@ impl<'a> GScene<'a> {
     pub fn get_camera_bind_group(
         &self,
         device: &wgpu::Device,
-    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-        if let Some(camera) = &self.camera {
-            get_camera_bind_group(&camera.camera_buffer, device)
+    ) -> wgpu::BindGroupLayout  {
+        if let Some(_) = &self.camera {
+            get_camera_bind_group_layout(device)
         } else {
             panic!("no camera")
         }
@@ -243,7 +244,6 @@ impl<'a> GSceneData<'a> {
 
         let index_vec =
             Self::get_scene_index_buffer_data(&mut gltf_data.models, &gltf_data.model_primitive_data, &gltf_data.binary_data);
-
 
         Self {
             models: gltf_data.models,

@@ -1,4 +1,5 @@
 use super::util::GltfErrors;
+use crate::model::materials::material::GMaterial;
 use crate::model::vertex::ModelVertex;
 use crate::model::{animation::animation_node::AnimationNode, primitive::GPrimitive};
 use crate::scene::scene::{GScene, PrimitiveData};
@@ -96,7 +97,7 @@ impl GModel {
                 .iter()
                 .filter(|primitive_data| primitive_data.mesh_id == mesh.mesh_id);
             for (primitive, data) in mesh.primitives.iter_mut().zip(mesh_primitive_data_vec) {
-                let primitive_vertex_data = data.get_vertex_data();
+                let primitive_vertex_data = data.get_vertex_data(primitive.material_index);
                 primitive.initialized_vertex_offset_len =
                     Some((*buffer_offset_val, primitive_vertex_data.len() as u32));
                 *buffer_offset_val += primitive_vertex_data.len() as u32;
@@ -163,10 +164,15 @@ impl GMesh {
         }
         Ok(primitive_data)
     }
-    pub(super) fn new(mesh: &Mesh) -> Result<Self, GltfErrors> {
+    pub(super) fn new(
+        mesh: &Mesh,
+        primitive_material_map: &HashMap<usize, usize>,
+    ) -> Result<Self, GltfErrors> {
         let mut g_primitives: Vec<GPrimitive> = Vec::with_capacity(mesh.primitives().len());
-        for _ in mesh.primitives() {
-            let p = GPrimitive::new();
+        for prim in mesh.primitives() {
+            let primitive_id = 10000 + (100 * mesh.index()) + (10 * prim.index());
+            let material_index = *primitive_material_map.get(&primitive_id).unwrap_or(&0);
+            let p = GPrimitive::new(material_index);
             g_primitives.push(p);
         }
         Ok(Self {
@@ -177,30 +183,54 @@ impl GMesh {
 }
 
 pub trait GDrawModel<'a> {
-    fn draw_scene(&mut self, scene: &'a GScene);
+    fn draw_scene(&mut self, scene: &'a GScene, materials: &Vec<GMaterial>);
 }
 trait RenderPassUtil<'a> {
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>);
-    fn draw_gmodel(&mut self, model: &'a GModel, instances: u32, num_mesh_instances: u32) -> u32;
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'a GMesh,
+        instances: Range<u32>,
+        materials: &Vec<GMaterial>,
+    );
+    fn draw_gmodel(
+        &mut self,
+        model: &'a GModel,
+        instances: u32,
+        num_mesh_instances: u32,
+        materials: &Vec<GMaterial>,
+    ) -> u32;
 }
 
 impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
-    fn draw_gmesh_instanced(&mut self, mesh: &'a GMesh, instances: Range<u32>) {
+    fn draw_gmesh_instanced(
+        &mut self,
+        mesh: &'a GMesh,
+        instances: Range<u32>,
+        materials: &Vec<GMaterial>,
+    ) {
+        let mut material_id = 0;
         for primitive in mesh.primitives.iter() {
-            let (indices_offset, indices_length) = primitive.initialized_index_offset_len.unwrap();
-            let (vertices_offset, vertices_length) =
-                primitive.initialized_vertex_offset_len.unwrap();
-            if indices_length > 0 {
-                self.draw_indexed(
-                    indices_offset..(indices_length + indices_offset),
-                    vertices_offset as i32,
-                    instances.clone(),
-                );
-            } else {
-                self.draw(
-                    vertices_offset..(vertices_offset + vertices_length),
-                    instances.clone(),
-                );
+            if primitive.material_index != material_id {
+                material_id = primitive.material_index;
+                self.set_bind_group(3, &materials[material_id].bind_group, &[]);
+            }
+            unsafe {
+                let (indices_offset, indices_length) =
+                    primitive.initialized_index_offset_len.unwrap_unchecked();
+                let (vertices_offset, vertices_length) =
+                    primitive.initialized_vertex_offset_len.unwrap_unchecked();
+                if indices_length > 0 {
+                    self.draw_indexed(
+                        indices_offset..(indices_length + indices_offset),
+                        vertices_offset as i32,
+                        instances.clone(),
+                    );
+                } else {
+                    self.draw(
+                        vertices_offset..(vertices_offset + vertices_length),
+                        instances.clone(),
+                    );
+                }
             }
         }
     }
@@ -209,11 +239,16 @@ impl<'a> RenderPassUtil<'a> for wgpu::RenderPass<'a> {
         model: &'a GModel,
         model_offset: u32,
         model_instance_count: u32,
+        materials: &Vec<GMaterial>,
     ) -> u32 {
         let mut mesh_offset = model_offset;
         for (idx, mesh) in model.meshes.iter().enumerate() {
             let num_mesh_instances = model.mesh_instances[idx] * model_instance_count;
-            self.draw_gmesh_instanced(mesh, mesh_offset..mesh_offset + num_mesh_instances);
+            self.draw_gmesh_instanced(
+                mesh,
+                mesh_offset..mesh_offset + num_mesh_instances,
+                materials,
+            );
             mesh_offset += num_mesh_instances;
         }
         mesh_offset
@@ -224,10 +259,15 @@ impl<'a, 'b> GDrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
-    fn draw_scene(&mut self, scene: &'b GScene) {
+    fn draw_scene(&mut self, scene: &'b GScene, materials: &Vec<GMaterial>) {
         let mut offset: u32 = 0;
         for (idx, model) in scene.models.iter().enumerate() {
-            offset += self.draw_gmodel(model, offset, scene.get_model_instances()[idx] as u32);
+            offset += self.draw_gmodel(
+                model,
+                offset,
+                scene.get_model_instances()[idx] as u32,
+                materials,
+            );
         }
     }
 }
@@ -269,27 +309,27 @@ impl LocalTransform {
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                     shader_location: 6,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
                     shader_location: 7,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
                     shader_location: 8,
                     format: wgpu::VertexFormat::Float32x4,
                 },
                 wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
                     shader_location: 9,
+                    format: wgpu::VertexFormat::Float32x4,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 10,
                     format: wgpu::VertexFormat::Uint32,
                 },
             ],

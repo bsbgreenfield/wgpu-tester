@@ -10,7 +10,11 @@ use cgmath::SquareMatrix;
 use gltf::{animation::Channel, Gltf};
 
 use crate::model::{
-    animation::animation_node::{AnimationNode, NodeType}, loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData}, materials::material::MaterialDefinition, model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData}, util::{copy_binary_data_from_gltf, get_model_meshes, AttributeType}
+    animation::animation_node::{AnimationNode, NodeType},
+    loader::loader::{GltfData, GltfFileLoadError, ModelPrimitiveData},
+    materials::material::MaterialDefinition,
+    model::{GModel, JointAnimationData, LocalTransform, MeshAnimationData, ModelAnimationData},
+    util::{copy_binary_data_from_gltf, get_model_meshes, AttributeType},
 };
 
 struct ModelData {
@@ -135,6 +139,7 @@ pub(super) fn load_models_from_gltf<'a>(
     gltf: &Gltf,
     main_buffer_data: Vec<u8>,
     material_definitions: Vec<MaterialDefinition<'a>>,
+    primitive_material_map: &HashMap<usize, usize>,
 ) -> GltfData<'a> {
     let nodes: Vec<_> = gltf.nodes().collect(); // collect the data into a vec so it can be indexed
     let mut models = Vec::<GModel>::with_capacity(root_nodes_ids.len());
@@ -185,6 +190,7 @@ pub(super) fn load_models_from_gltf<'a>(
             &model_data.mesh_data.mesh_ids,
             &nodes,
             &buffer_offsets,
+            primitive_material_map,
             &main_buffer_data,
         )
         .expect("meshes for this model");
@@ -357,8 +363,8 @@ fn get_model_data(
                     .joint_to_joint_index_map
                     .insert(root_node.index(), joint_index);
                 model_data.joint_data.joint_ids.push(root_node.index());
-                let ibm: cgmath::Matrix4<f32> =
-                    skin_ibms.get(&0).unwrap()[joint_ids.len() - 1].into();
+                //let ibm: cgmath::Matrix4<f32> =
+                //   skin_ibms.get(&0).unwrap()[joint_ids.len() - 1].into();
                 model_data
                     .joint_data
                     .joint_pose_transforms
@@ -374,24 +380,37 @@ fn get_model_data(
     model_data
 }
 pub(super) fn get_material_definitions<'a>(
-    nodes: gltf::iter::Nodes,
-    root_nodes_ids: &Vec<usize>,
+    materials: gltf::iter::Materials,
+    meshes: gltf::iter::Meshes,
     main_buffer_data: &Vec<u8>,
-) -> Vec<MaterialDefinition<'a>> {
-    let nodes: Vec<_> = nodes.collect(); // collect the data into a vec so it can be indexed
-    let mut material_defs: Vec<MaterialDefinition> = Vec::new();
-    for root_node in root_nodes_ids.iter() {
-        let rid = *root_node;
-        let root_node = nodes[rid].clone();
-        if let Some(mesh) = root_node.mesh() {
-            for primitive in mesh.primitives() {
-                let material_def: MaterialDefinition =
-                    MaterialDefinition::new(&primitive.material(), main_buffer_data);
-                material_defs.push(material_def);
+) -> (Vec<MaterialDefinition<'a>>, HashMap<usize, usize>) {
+    let mut material_definitions: Vec<MaterialDefinition> = Vec::new();
+    let mut primitive_material_map: HashMap<usize, usize> = HashMap::new();
+    for material in materials.into_iter() {
+        material_definitions.push(MaterialDefinition::new(
+            &material,
+            main_buffer_data,
+            material_definitions.len() + 1,
+        ));
+    }
+    for mesh in meshes.into_iter() {
+        for primitive in mesh.primitives().into_iter() {
+            let primitive_id = 10000 + (100 * mesh.index()) + (10 * primitive.index());
+            if primitive.material().index().is_some() {
+                primitive_material_map.insert(
+                    primitive_id,
+                    material_definitions
+                        .iter()
+                        .position(|md| md.id == primitive.material().index().unwrap())
+                        .expect("should be a material with this id")
+                        + 1,
+                );
+            } else {
+                primitive_material_map.insert(primitive.index(), 0);
             }
         }
     }
-    material_defs
+    (material_definitions, primitive_material_map)
 }
 
 pub(super) fn get_root_nodes(gltf: &Gltf) -> Result<Vec<usize>, gltf::Error> {

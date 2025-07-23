@@ -8,17 +8,19 @@ pub struct ModelVertex {
     pub tex_coords: [f32; 2],
     pub joints: [u8; 4],
     pub weights: [u8; 4],
+    pub base_color_index: u32,
 }
 
 pub trait Vertex {
     fn desc() -> VertexBufferLayout<'static>;
 }
-const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+const ATTRIBUTES: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
     0 => Float32x3,
     1 => Float32x3,
     2 => Float32x2,
     3 => Uint8x4,
-    4 => Unorm8x4
+    4 => Unorm8x4,
+    5 => Uint32,
 ];
 impl Vertex for ModelVertex {
     fn desc() -> VertexBufferLayout<'static> {

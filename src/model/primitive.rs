@@ -15,12 +15,14 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct GPrimitive {
+    pub material_index: usize,
     pub initialized_vertex_offset_len: Option<(u32, u32)>,
     pub initialized_index_offset_len: Option<(u32, u32)>,
 }
 impl GPrimitive {
-    pub fn new() -> Self {
+    pub fn new(material_index: usize) -> Self {
         Self {
+            material_index,
             initialized_vertex_offset_len: None,
             initialized_index_offset_len: None,
         }
@@ -166,7 +168,7 @@ impl PrimitiveData {
             weights,
         })
     }
-    pub(super) fn get_vertex_data(&self) -> Vec<ModelVertex> {
+    pub(super) fn get_vertex_data(&self, material_index: usize) -> Vec<ModelVertex> {
         let position_f32: &[f32] = bytemuck::cast_slice(&self.positions);
         let normals_f32: Option<Vec<f32>> = match &self.normals {
             Some(normals) => Some(bytemuck::cast_slice(normals).to_vec()),
@@ -205,7 +207,10 @@ impl PrimitiveData {
                 };
                 let weights = match &weights_normalized {
                     Some(w) => &w[i * 4..i * 4 + 4],
-                    None => &[0, 0, 0, 0],
+                    None => match &joints_u16 {
+                        Some(_) => &[0, 0, 0, 0],
+                        None => &[1, 1, 1, 1],
+                    },
                 };
                 // println!("POSITION {:?}", &position_f32[i * 3..i * 3 + 3]);
                 // println!(
@@ -227,6 +232,7 @@ impl PrimitiveData {
                 }
 
                 return ModelVertex {
+                    base_color_index: material_index as u32,
                     position: position_f32[i * 3..i * 3 + 3].try_into().unwrap(),
                     normal: normal,
                     tex_coords: tex,

@@ -3,7 +3,7 @@ use gltf::{
     accessor::{DataType, Dimensions},
     Accessor,
 };
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 #[derive(Debug)]
 pub enum GltfErrors {
@@ -138,6 +138,7 @@ pub(super) fn get_model_meshes(
     mesh_ids: &Vec<u32>,
     nodes: &Vec<gltf::Node>,
     buffer_offsets: &Vec<u64>,
+    primitive_material_map: &HashMap<usize, usize>,
     binary_data: &Vec<u8>,
 ) -> Result<(Vec<GMesh>, Vec<PrimitiveData>), GltfErrors> {
     let mut mesh_primitive_data: Vec<PrimitiveData> = Vec::new();
@@ -150,7 +151,7 @@ pub(super) fn get_model_meshes(
             .mesh()
             .unwrap();
 
-        let g_mesh = GMesh::new(&mesh)?;
+        let g_mesh = GMesh::new(&mesh, primitive_material_map)?;
         let primitive_data = GMesh::get_primitive_data(&mesh, buffer_offsets, binary_data)?;
         meshes.push(g_mesh);
         mesh_primitive_data.extend(primitive_data);

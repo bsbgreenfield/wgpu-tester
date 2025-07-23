@@ -4,7 +4,6 @@ pub struct GTexture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
-    pub bind_group: Option<wgpu::BindGroup>,
 }
 
 impl GTexture {
@@ -48,39 +47,22 @@ impl GTexture {
             texture,
             sampler,
             view,
-            bind_group: None,
         }
     }
     pub fn new(
         t: &wgpu::TextureDescriptor,
         s: &wgpu::SamplerDescriptor,
         v: &wgpu::TextureViewDescriptor,
-        bgl: &wgpu::BindGroupLayout,
         device: &wgpu::Device,
     ) -> Self {
         let texture = device.create_texture(t);
         let sampler = device.create_sampler(s);
         let view = texture.create_view(v);
-        let bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: None,
-            layout: bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        }));
 
         Self {
             texture,
             view,
             sampler,
-            bind_group,
         }
     }
 

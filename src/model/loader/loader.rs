@@ -3,8 +3,11 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::{
     model::{
         loader::util::{
-            decode_gltf_data_uri, get_data_files, get_material_definitions, get_root_nodes, load_models_from_gltf
-        }, materials::material::MaterialDefinition, model::{GModel, LocalTransform}
+            decode_gltf_data_uri, get_data_files, get_material_definitions, get_root_nodes,
+            load_models_from_gltf,
+        },
+        materials::material::MaterialDefinition,
+        model::{GModel, LocalTransform},
     },
     scene::scene::PrimitiveData,
 };
@@ -44,17 +47,23 @@ impl GltfLoader {
             }
         };
         let root_node_ids = get_root_nodes(&gltf).map_err(|e| GltfFileLoadError::GltfError(e))?;
-        let nodes = gltf.nodes();
-        let material_definitions: Vec<MaterialDefinition> =
-            get_material_definitions(nodes.clone(), &root_node_ids, &binary_data);
-         let gltf_data: GltfData = load_models_from_gltf(
-             root_node_ids,
-             &gltf,
-             binary_data,
-             material_definitions,
-         );
+        let (material_definitions, primitive_material_map): (
+            Vec<MaterialDefinition>,
+            HashMap<usize, usize>,
+        ) = get_material_definitions(
+            gltf.materials().clone(),
+            gltf.meshes().clone(),
+            &binary_data,
+        );
+        let gltf_data: GltfData = load_models_from_gltf(
+            root_node_ids,
+            &gltf,
+            binary_data,
+            material_definitions,
+            &primitive_material_map,
+        );
 
-         Ok(gltf_data)
+        Ok(gltf_data)
     }
 }
 

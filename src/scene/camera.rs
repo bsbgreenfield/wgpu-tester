@@ -104,35 +104,57 @@ impl CameraUniform {
     }
 }
 
-pub(super) fn get_camera_bind_group(
-    camera_buffer: &wgpu::Buffer,
-    device: &wgpu::Device,
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+pub(super) fn get_camera_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     let camera_bind_group_layout =
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
             label: Some("Camera bind group layout"),
         });
 
-    let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &camera_bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: camera_buffer.as_entire_binding(),
-        }],
+    camera_bind_group_layout
+}
+pub fn get_camera_color_bg(
+    camera_buffer: &wgpu::Buffer,
+    base_color_buffer: &wgpu::Buffer,
+    camera_bgl: &wgpu::BindGroupLayout,
+    device: &wgpu::Device,
+) -> wgpu::BindGroup {
+    let camera_color_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: camera_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: base_color_buffer.as_entire_binding(),
+            },
+        ],
         label: Some("camera bind group"),
     });
-
-    (camera_bind_group_layout, camera_bind_group)
+    camera_color_bind_group
 }
 pub(super) fn get_camera_default(aspect_ratio: f32, device: &wgpu::Device) -> Camera {
     let camera = Camera::new(
