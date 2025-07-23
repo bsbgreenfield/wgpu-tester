@@ -76,7 +76,10 @@ pub const TRUCK: SceneScaffold = SceneScaffold {
     additional_instances: &[],
 };
 pub const BRAIN: SceneScaffold = SceneScaffold {
-    global_transform_overrides: &[],
+    global_transform_overrides: &[ScaffoldGTOverride {
+        model_idx: 0,
+        transform: transforms::scale(1.5),
+    }],
     file_paths: &["brain-stem"],
     additional_instances: &[],
 };
