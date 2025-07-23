@@ -1,5 +1,11 @@
 A simple webGPU application written in rust with minimal dependencies to learn graphics programming
-The app is currently capable of rendering simultaneous instances of mutliple models defined in the [glTF](https://www.khronos.org/gltf/) format
+
+## Features implemented
+- cpu driven animations (skeletal, mesh)
+- basic materials and textures
+- gpu instancing of models 
+- easy scene creation using one or more gltf files
+
 ## Dependencies
 - [wgpu](https://crates.io/crates/wgpu)
 - [winit](https://crates.io/crates/winit)
